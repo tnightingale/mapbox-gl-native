@@ -6,13 +6,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/** Defines the area spanned by an MGLCoordinateBounds. */
-typedef struct {
+/** Defines the area spanned by an `MGLCoordinateBounds`. */
+typedef struct MGLCoordinateSpan {
+    /** Latitudes spanned by an `MGLCoordinateBounds`. */
     CLLocationDegrees latitudeDelta;
+    /** Longitudes spanned by an `MGLCoordinateBounds`. */
     CLLocationDegrees longitudeDelta;
 } MGLCoordinateSpan;
 
-/** Creates a new MGLCoordinateSpan from the given latitudinal and longitudinal deltas. */
+/** Creates a new `MGLCoordinateSpan` from the given latitudinal and longitudinal deltas. */
 NS_INLINE MGLCoordinateSpan MGLCoordinateSpanMake(CLLocationDegrees latitudeDelta, CLLocationDegrees longitudeDelta) {
     MGLCoordinateSpan span;
     span.latitudeDelta = latitudeDelta;
@@ -30,12 +32,14 @@ NS_INLINE BOOL MGLCoordinateSpanEqualToCoordinateSpan(MGLCoordinateSpan span1, M
 extern const MGLCoordinateSpan MGLCoordinateSpanZero;
 
 /** A rectangular area as measured on a two-dimensional map projection. */
-typedef struct {
+typedef struct MGLCoordinateBounds {
+    /** Coordinate at the southwest corner. */
     CLLocationCoordinate2D sw;
+    /** Coordinate at the northeast corner. */
     CLLocationCoordinate2D ne;
 } MGLCoordinateBounds;
 
-/** Creates a new MGLCoordinateBounds structure from the given southwest and northeast coordinates. */
+/** Creates a new `MGLCoordinateBounds` structure from the given southwest and northeast coordinates. */
 NS_INLINE MGLCoordinateBounds MGLCoordinateBoundsMake(CLLocationCoordinate2D sw, CLLocationCoordinate2D ne) {
     MGLCoordinateBounds bounds;
     bounds.sw = sw;

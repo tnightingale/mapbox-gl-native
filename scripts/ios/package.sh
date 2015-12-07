@@ -136,17 +136,9 @@ cat CHANGELOG.md | sed -n "/^## iOS ${DOCS_VERSION}/,/^##/p" | sed '$d' >> ${REA
 # below in the presence of --xcodebuild-arguments, so we have to duplicate those
 # arguments in --xcodebuild-arguments.
 jazzy \
-    --xcodebuild-arguments "--objc,include/mbgl/ios/Mapbox.h,-x,objective-c,-isysroot,$(xcrun --show-sdk-path --sdk iphoneos)" \
-    --objc \
-    --skip-undocumented \
-    --author Mapbox \
-    --author_url https://www.mapbox.com/ \
-    --github_url https://github.com/mapbox/mapbox-gl-native \
+    --xcodebuild-arguments "--objc,include/mbgl/ios/Mapbox.h,-x,objective-c,-isysroot,$(xcrun --show-sdk-path --sdk iphonesimulator)" \
     --github-file-prefix https://github.com/mapbox/mapbox-gl-native/tree/${HASH} \
     --module-version ${DOCS_VERSION} \
-    --umbrella-header include/mbgl/ios/Mapbox.h \
-    --framework-root . \
-    --module Mapbox \
     --readme ${README} \
     --root-url https://www.mapbox.com/ios-sdk/api/${DOCS_VERSION}/ \
     --output ${DOCS_OUTPUT}

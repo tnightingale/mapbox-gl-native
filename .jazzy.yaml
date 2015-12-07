@@ -1,0 +1,49 @@
+module_name: Mapbox
+#module_name: Mapbox iOS SDK
+author_name: Mapbox
+author_url: https://www.mapbox.com/
+github_url: https://github.com/mapbox/mapbox-gl-native
+dash_url: https://www.mapbox.com/ios-sdk/docsets/Mapbox.xml
+copyright: '© 2014–2015 [Mapbox](https://www.mapbox.com/). See [license](https://github.com/mapbox/mapbox-gl-native/blob/master/LICENSE.md) for more details.'
+
+objc_mode: Yes
+skip_undocumented: Yes
+hide_documentation_coverage: Yes
+umbrella_header: include/mbgl/ios/Mapbox.h
+template_directory: ios/docs/templates
+
+custom_categories:
+  - name: Map
+    children:
+      - MGLAccountManager
+      - MGLMapCamera
+      - MGLMapView
+      - MGLMapViewDelegate
+      - MGLStyle
+      - MGLUserTrackingMode
+  - name: Annotations
+    children:
+      - MGLAnnotation
+      - MGLAnnotationImage
+      - MGLMultiPoint
+      - MGLPointAnnotation
+      - MGLPolygon
+      - MGLPolyline
+      - MGLOverlay
+      - MGLShape
+      - MGLUserLocation
+  - name: Geometry
+    children:
+      - MGLCoordinateBounds
+      - MGLCoordinateBoundsEqualToCoordinateBounds
+      - MGLCoordinateBoundsGetCoordinateSpan
+      - MGLCoordinateBoundsIsEmpty
+      - MGLCoordinateBoundsMake
+      - MGLCoordinateBoundsOffset
+      - MGLCoordinateSpan
+      - MGLCoordinateSpanEqualToCoordinateSpan
+      - MGLCoordinateSpanMake
+      - MGLCoordinateSpanZero
+      - MGLDegreesFromRadians
+      - MGLRadiansFromDegrees
+      - MGLStringFromCoordinateBounds
