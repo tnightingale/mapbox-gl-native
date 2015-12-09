@@ -2,6 +2,7 @@
 #define MBGL_UTIL_ASYNC_TASK
 
 #include <mbgl/util/noncopyable.hpp>
+#include <mbgl/util/time.hpp>
 
 #include <memory>
 #include <functional>
@@ -16,6 +17,8 @@ public:
 
     void send();
     void unref();
+
+    void setThrottle(Duration timeout);
 
 private:
     class Impl;
