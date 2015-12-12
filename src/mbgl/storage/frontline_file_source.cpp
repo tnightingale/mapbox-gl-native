@@ -36,7 +36,7 @@ public:
 
 private:
     void openDatabase();
-    static TileID tileIDForResource(const Resource&);
+    std::unique_ptr<Statement> statementForResource(const Resource&, bool checkOnly = false);
 
 private:
     const std::string path;
@@ -59,69 +59,36 @@ void FrontlineFileSource::Impl::openDatabase() {
     db = std::make_unique<Database>(path.c_str(), ReadOnly);
 }
 
-TileID FrontlineFileSource::Impl::tileIDForResource(const Resource& res) {
-    const auto canonicalURL = util::mapbox::canonicalURL(res.url);
-    auto parts = util::split(canonicalURL, "/");
-    const int8_t  z = atoi(parts[parts.size() - 3].c_str());
-    const int32_t x = atoi(parts[parts.size() - 2].c_str());
-    const int32_t y = atoi(util::split(util::split(parts[parts.size() - 1], ".")[0], "@")[0].c_str());
-
-    return TileID(z, x, (pow(2, z) - y - 1), z); // flip y for MBTiles
-}
-
-bool FrontlineFileSource::Impl::handlesResource(const Resource& res) {
+std::unique_ptr<Statement> FrontlineFileSource::Impl::statementForResource(const Resource& resource, bool checkOnly) {
     try {
-        if (res.kind == Resource::Kind::Tile) {
-            if (!db) {
-                openDatabase();
-            }
-
-            Statement getStmt = db->prepare("SELECT COUNT(`tile_data`) FROM `tiles` WHERE `zoom_level` = ? AND `tile_column` = ? AND `tile_row` = ?");
-
-            TileID id = tileIDForResource(res);
-            getStmt.bind(1, (int)id.z);
-            getStmt.bind(2, (int)id.x);
-            getStmt.bind(3, (int)id.y);
-
-            if (getStmt.run() && getStmt.get<int>(0) > 0) {
-                return true;
-            }
-        } else if (res.kind != Resource::Kind::Unknown) {
-            return true;
+        if (!db) {
+            openDatabase();
         }
-    } catch (mapbox::sqlite::Exception& ex) {
-        Log::Error(Event::Database, ex.code, ex.what());
-    } catch (std::runtime_error& ex) {
-        Log::Error(Event::Database, ex.what());
-    }
 
-    return false;
-}
-
-void FrontlineFileSource::Impl::handleRequest(Resource resource, FileRequest* req, Callback callback) {
-    (void)req;
-
-    if (!db) {
-        openDatabase();
-    }
-
-    std::shared_ptr<Response> res = std::make_shared<Response>();
-
-    try {
         if (resource.kind == Resource::Kind::Tile) {
-            Statement getStmt = db->prepare("SELECT `tile_data` FROM `tiles` WHERE `zoom_level` = ? AND `tile_column` = ? AND `tile_row` = ?");
 
-            TileID id = tileIDForResource(resource);
+            const auto canonicalURL = util::mapbox::canonicalURL(resource.url);
+            auto parts = util::split(canonicalURL, "/");
+            const int8_t  z = atoi(parts[parts.size() - 3].c_str());
+            const int32_t x = atoi(parts[parts.size() - 2].c_str());
+            const int32_t y = atoi(util::split(util::split(parts[parts.size() - 1], ".")[0], "@")[0].c_str());
+
+            const auto id = TileID(z, x, (pow(2, z) - y - 1), z); // flip y for MBTiles
+
+            const auto sql = (checkOnly ?
+                "SELECT COUNT(`tile_data`) FROM `tiles` WHERE `zoom_level` = ? AND `tile_column` = ? AND `tile_row` = ?" :
+                "SELECT `tile_data` FROM `tiles` WHERE `zoom_level` = ? AND `tile_column` = ? AND `tile_row` = ?");
+
+            Statement getStmt = db->prepare(sql);
+
             getStmt.bind(1, (int)id.z);
             getStmt.bind(2, (int)id.x);
             getStmt.bind(3, (int)id.y);
 
-            if (getStmt.run()) {
-                res->data = std::make_shared<std::string>(std::move(getStmt.get<std::string>(0)));
-            } else {
-                res->error = std::make_unique<Response::Error>(Response::Error::Reason::NotFound);
-            }
-        } else {
+            return std::make_unique<Statement>(std::move(getStmt));
+
+        } else if (resource.kind != Resource::Kind::Unknown) {
+
             std::string key = "";
             if (resource.kind == Resource::Kind::Glyphs) {
                 key = "gl_glyph";
@@ -136,19 +103,50 @@ void FrontlineFileSource::Impl::handleRequest(Resource resource, FileRequest* re
             }
             assert(key.length());
 
-            Statement getStmt = db->prepare("SELECT `value` FROM `metadata` WHERE `name` = ?");
+            const auto sql = (checkOnly ?
+                "SELECT COUNT(`value`) FROM `metadata` WHERE `name` = ?" :
+                "SELECT `value` FROM `metadata` WHERE `name` = ?");
+
+            Statement getStmt = db->prepare(sql);
 
             const auto name = key + "_" + util::mapbox::canonicalURL(resource.url);
             getStmt.bind(1, name.c_str());
 
-            if (getStmt.run()) {
-                res->data = std::make_shared<std::string>(std::move(getStmt.get<std::string>(0)));
-            } else {
-                res->error = std::make_unique<Response::Error>(Response::Error::Reason::NotFound);
-            }
+            return std::make_unique<Statement>(std::move(getStmt));
+
         }
-    } catch (const std::exception& err) {
-        res->error = std::make_unique<Response::Error>(Response::Error::Reason::Other, err.what());
+    } catch (mapbox::sqlite::Exception& ex) {
+        Log::Error(Event::Database, ex.code, ex.what());
+    } catch (std::runtime_error& ex) {
+        Log::Error(Event::Database, ex.what());
+    }
+
+    return nullptr;
+}
+
+bool FrontlineFileSource::Impl::handlesResource(const Resource& resource) {
+    const auto getStmt = statementForResource(resource, true);
+
+    if (getStmt != nullptr) {
+        return (getStmt->run() && getStmt->get<int>(0) > 0);
+    }
+
+    return false;
+}
+
+void FrontlineFileSource::Impl::handleRequest(Resource resource, FileRequest* req, Callback callback) {
+    (void)req;
+
+    std::shared_ptr<Response> res = std::make_shared<Response>();
+
+    const auto getStmt = statementForResource(resource);
+
+    if (getStmt != nullptr) {
+        if (getStmt->run()) {
+            res->data = std::make_shared<std::string>(std::move(getStmt->get<std::string>(0)));
+        } else {
+            res->error = std::make_unique<Response::Error>(Response::Error::Reason::NotFound);
+        }
     }
 
     callback(*res);
