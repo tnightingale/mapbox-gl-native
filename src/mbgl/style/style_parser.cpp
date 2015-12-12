@@ -1,5 +1,10 @@
 #include <mbgl/style/style_parser.hpp>
-#include <mbgl/style/style_layer.hpp>
+#include <mbgl/layer/fill_layer.hpp>
+#include <mbgl/layer/line_layer.hpp>
+#include <mbgl/layer/circle_layer.hpp>
+#include <mbgl/layer/symbol_layer.hpp>
+#include <mbgl/layer/raster_layer.hpp>
+#include <mbgl/layer/background_layer.hpp>
 
 #include <mbgl/platform/log.hpp>
 
@@ -7,9 +12,11 @@
 
 namespace mbgl {
 
+StyleParser::~StyleParser() = default;
+
 void StyleParser::parse(const JSVal& document) {
     if (document.HasMember("version")) {
-        version = document["version"].GetInt();
+        int version = document["version"].GetInt();
         if (version != 8) {
             Log::Warning(Event::ParseStyle, "current renderer implementation only supports style spec version 8; using an outdated style will cause rendering errors");
         }
@@ -24,11 +31,17 @@ void StyleParser::parse(const JSVal& document) {
     }
 
     if (document.HasMember("sprite")) {
-        parseSprite(document["sprite"]);
+        const JSVal& sprite = document["sprite"];
+        if (sprite.IsString()) {
+            spriteURL = { sprite.GetString(), sprite.GetStringLength() };
+        }
     }
 
     if (document.HasMember("glyphs")) {
-        parseGlyphURL(document["glyphs"]);
+        const JSVal& glyphs = document["glyphs"];
+        if (glyphs.IsString()) {
+            glyphURL = { glyphs.GetString(), glyphs.GetStringLength() };
+        }
     }
 }
 
@@ -128,7 +141,7 @@ void StyleParser::parseLayers(const JSVal& value) {
             continue;
         }
 
-        layersMap.emplace(layerID, std::pair<const JSVal&, util::ptr<StyleLayer>> { layerValue, nullptr });
+        layersMap.emplace(layerID, std::pair<const JSVal&, std::unique_ptr<StyleLayer>> { layerValue, nullptr });
         ids.push_back(layerID);
     }
 
@@ -138,14 +151,18 @@ void StyleParser::parseLayers(const JSVal& value) {
         parseLayer(it->first,
                    it->second.first,
                    it->second.second);
+    }
+
+    for (const auto& id : ids) {
+        auto it = layersMap.find(id);
 
         if (it->second.second) {
-            layers.emplace_back(it->second.second);
+            layers.emplace_back(std::move(it->second.second));
         }
     }
 }
 
-void StyleParser::parseLayer(const std::string& id, const JSVal& value, util::ptr<StyleLayer>& layer) {
+void StyleParser::parseLayer(const std::string& id, const JSVal& value, std::unique_ptr<StyleLayer>& layer) {
     if (layer) {
         // Skip parsing this again. We already have a valid layer definition.
         return;
@@ -179,21 +196,14 @@ void StyleParser::parseLayer(const std::string& id, const JSVal& value, util::pt
                    it->second.second);
         stack.pop_front();
 
-        util::ptr<StyleLayer> reference = it->second.second;
+        StyleLayer* reference = it->second.second.get();
         if (!reference) {
             return;
         }
 
-        layer = StyleLayer::create(reference->type);
+        layer = reference->clone();
         layer->id = id;
-        layer->type = reference->type;
-        layer->source = reference->source;
-        layer->sourceLayer = reference->sourceLayer;
-        layer->filter = reference->filter;
-        layer->minZoom = reference->minZoom;
-        layer->maxZoom = reference->maxZoom;
-        layer->visibility = reference->visibility;
-        layer->layout = reference->layout;
+        layer->ref = ref;
 
     } else {
         // Otherwise, parse the source/source-layer/filter/render keys to form the bucket.
@@ -209,16 +219,25 @@ void StyleParser::parseLayer(const std::string& id, const JSVal& value, util::pt
         }
 
         std::string type { typeVal.GetString(), typeVal.GetStringLength() };
-        StyleLayerType typeClass = StyleLayerTypeClass(type);
-        layer = StyleLayer::create(typeClass);
 
-        if (!layer) {
+        if (type == "fill") {
+            layer = std::make_unique<FillLayer>();
+        } else if (type == "line") {
+            layer = std::make_unique<LineLayer>();
+        } else if (type == "circle") {
+            layer = std::make_unique<CircleLayer>();
+        } else if (type == "symbol") {
+            layer = std::make_unique<SymbolLayer>();
+        } else if (type == "raster") {
+            layer = std::make_unique<RasterLayer>();
+        } else if (type == "background") {
+            layer = std::make_unique<BackgroundLayer>();
+        } else {
             Log::Warning(Event::ParseStyle, "unknown type '%s' for layer '%s'", type.c_str(), id.c_str());
             return;
         }
 
         layer->id = id;
-        layer->type = typeClass;
 
         if (value.HasMember("source")) {
             const JSVal& value_source = value["source"];
@@ -273,18 +292,6 @@ void StyleParser::parseLayer(const std::string& id, const JSVal& value, util::pt
     layer->parsePaints(value);
 }
 
-void StyleParser::parseSprite(const JSVal& value) {
-    if (value.IsString()) {
-        sprite = { value.GetString(), value.GetStringLength() };
-    }
-}
-
-void StyleParser::parseGlyphURL(const JSVal& value) {
-    if (value.IsString()) {
-        glyph_url = { value.GetString(), value.GetStringLength() };
-    }
-}
-
 void StyleParser::parseVisibility(StyleLayer& layer, const JSVal& value) {
     if (!value.HasMember("visibility")) {
         return;
@@ -296,4 +303,4 @@ void StyleParser::parseVisibility(StyleLayer& layer, const JSVal& value) {
     layer.visibility = VisibilityTypeClass({ value["visibility"].GetString(), value["visibility"].GetStringLength() });
 }
 
-}
+} // namespace mbgl

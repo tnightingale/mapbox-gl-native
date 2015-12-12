@@ -11,8 +11,9 @@ else
 fi
 
 COMMIT_MESSAGE=$(git show -s --format=%B $TRAVIS_COMMIT | tr -d '\n')
+PACKAGE_JSON_VERSION=$(node -e "console.log(require('./package.json').version)")
 
-if test "${COMMIT_MESSAGE#*'[publish binary]'}" != "$COMMIT_MESSAGE"; then
+if [[ ${TRAVIS_TAG} == node-v${PACKAGE_JSON_VERSION} ]] || test "${COMMIT_MESSAGE#*'[publish binary]'}" != "$COMMIT_MESSAGE"; then
     source ~/.nvm/nvm.sh
     nvm use $NODE_VERSION
 
@@ -36,7 +37,7 @@ if test "${COMMIT_MESSAGE#*'[publish binary]'}" != "$COMMIT_MESSAGE"; then
     fi
 fi
 
-if [ ! -z "${AWS_ACCESS_KEY_ID}" ] && [ ! -z "${AWS_SECRET_ACCESS_KEY}" ] ; then
+if [[ ${TRAVIS_OS_NAME} == "linux" ]] && [ ! -z "${AWS_ACCESS_KEY_ID}" ] && [ ! -z "${AWS_SECRET_ACCESS_KEY}" ] ; then
     # Install and add awscli to PATH for uploading the results
     pip install --user awscli
     export PATH="`python -m site --user-base`/bin:${PATH}"

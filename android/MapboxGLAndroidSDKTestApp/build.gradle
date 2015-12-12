@@ -16,15 +16,17 @@ apply plugin: 'io.fabric'
 apply plugin: 'checkstyle'
 
 task accessToken {
-    def rawDir = new File("MapboxGLAndroidSDK/src/main/res/raw")
-    rawDir.mkdirs()
-    def tokenFile = new File("MapboxGLAndroidSDK/src/main/res/raw/token.txt")
+    def tokenFile = new File("MapboxGLAndroidSDKTestApp/src/main/res/values/developer-config.xml")
     if (!tokenFile.exists()) {
-        String token = "$System.env.MAPBOX_ACCESS_TOKEN"
-        if (token == null) {
+        String tokenFileContents = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+                "<resources>\n" +
+                "    <string name=\"access_token\">" + "$System.env.MAPBOX_ACCESS_TOKEN" + "</string>\n" +
+                "</resources>"
+
+        if (tokenFileContents == null) {
             throw new InvalidUserDataException("You must set the MAPBOX_ACCESS_TOKEN environment variable.")
         }
-        tokenFile.write(token)
+        tokenFile.write(tokenFileContents)
     }
 }
 
@@ -34,10 +36,10 @@ gradle.projectsEvaluated {
 
 android {
     compileSdkVersion 23
-    buildToolsVersion "23.0.1"
+    buildToolsVersion "23.0.2"
 
     defaultConfig {
-        applicationId "com.mapbox.mapboxgl.testapp"
+        applicationId "com.mapbox.mapboxsdk.testapp"
         minSdkVersion 15
         targetSdkVersion 23
         versionCode 6
@@ -67,7 +69,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

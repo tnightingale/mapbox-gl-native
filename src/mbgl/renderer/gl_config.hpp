@@ -14,27 +14,26 @@ template <typename T>
 class Value {
 public:
     inline void operator=(const typename T::Type& value) {
-        if (current != value) {
+        if (dirty || current != value) {
+            dirty = false;
             current = value;
             T::Set(current);
         }
     }
 
     inline void reset() {
+        dirty = true;
         current = T::Default;
         T::Set(current);
     }
 
-    inline void save() {
-        current = T::Get();
-    }
-
-    inline void restore() {
-        T::Set(current);
+    inline void setDirty() {
+        dirty = true;
     }
 
 private:
     typename T::Type current = T::Default;
+    bool dirty = false;
 };
 
 struct ClearDepth {
@@ -113,9 +112,10 @@ struct ColorMask {
         MBGL_CHECK_ERROR(glColorMask(value.r, value.g, value.b, value.a));
     }
     inline static Type Get() {
-        GLfloat floats[4];
-        MBGL_CHECK_ERROR(glGetFloatv(GL_COLOR_WRITEMASK, floats));
-        return { floats[0], floats[1], floats[2], floats[3] };
+        GLboolean bools[4];
+        MBGL_CHECK_ERROR(glGetBooleanv(GL_COLOR_WRITEMASK, bools));
+        return { static_cast<bool>(bools[0]), static_cast<bool>(bools[1]),
+                 static_cast<bool>(bools[2]), static_cast<bool>(bools[3]) };
     }
 };
 
@@ -266,23 +266,6 @@ struct LineWidth {
     }
 };
 
-struct Viewport {
-    struct Type { GLint x, y; GLsizei width, height; };
-    static const Type Default;
-    inline static void Set(const Type& value) {
-        MBGL_CHECK_ERROR(glViewport(value.x, value.y, value.width, value.height));
-    }
-    inline static Type Get() {
-        GLint viewport[4];
-        MBGL_CHECK_ERROR(glGetIntegerv(GL_VIEWPORT, viewport));
-        return { viewport[0], viewport[1], viewport[2], viewport[3] };
-    }
-};
-
-inline bool operator!=(const Viewport::Type& a, const Viewport::Type& b) {
-    return a.x != b.x || a.y != b.y || a.width != b.width || a.height != b.height;
-}
-
 class Config {
 public:
     void reset() {
@@ -302,47 +285,25 @@ public:
         clearStencil.reset();
         program.reset();
         lineWidth.reset();
-        viewport.reset();
     }
 
-    void restore() {
-        stencilFunc.restore();
-        stencilMask.restore();
-        stencilTest.restore();
-        stencilOp.restore();
-        depthRange.restore();
-        depthMask.restore();
-        depthTest.restore();
-        depthFunc.restore();
-        blend.restore();
-        blendFunc.restore();
-        colorMask.restore();
-        clearDepth.restore();
-        clearColor.restore();
-        clearStencil.restore();
-        program.restore();
-        lineWidth.restore();
-        viewport.restore();
-    }
-
-    void save() {
-        stencilFunc.save();
-        stencilMask.save();
-        stencilTest.save();
-        stencilOp.save();
-        depthRange.save();
-        depthMask.save();
-        depthTest.save();
-        depthFunc.save();
-        blend.save();
-        blendFunc.save();
-        colorMask.save();
-        clearDepth.save();
-        clearColor.save();
-        clearStencil.save();
-        program.save();
-        lineWidth.save();
-        viewport.save();
+    void setDirty() {
+        stencilFunc.setDirty();
+        stencilMask.setDirty();
+        stencilTest.setDirty();
+        stencilOp.setDirty();
+        depthRange.setDirty();
+        depthMask.setDirty();
+        depthTest.setDirty();
+        depthFunc.setDirty();
+        blend.setDirty();
+        blendFunc.setDirty();
+        colorMask.setDirty();
+        clearDepth.setDirty();
+        clearColor.setDirty();
+        clearStencil.setDirty();
+        program.setDirty();
+        lineWidth.setDirty();
     }
 
     Value<StencilFunc> stencilFunc;
@@ -361,7 +322,6 @@ public:
     Value<ClearStencil> clearStencil;
     Value<Program> program;
     Value<LineWidth> lineWidth;
-    Value<Viewport> viewport;
 };
 
 } // namespace gl

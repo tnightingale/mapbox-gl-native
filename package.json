@@ -1,6 +1,6 @@
 {
   "name": "mapbox-gl-native",
-  "version": "2.0.0-pre.13",
+  "version": "2.1.0",
   "description": "Renders map tiles with Mapbox GL",
   "keywords": [
     "mapbox",
@@ -19,16 +19,17 @@
   ],
   "dependencies": {
     "nan": "^2.1.0",
-    "node-pre-gyp": "^0.6.12"
+    "node-pre-gyp": "^0.6.17"
   },
   "bundledDependencies": [
     "node-pre-gyp"
   ],
   "devDependencies": {
-    "aws-sdk": "^2.2.9",
-    "mapbox-gl-test-suite": "git+https://github.com/mapbox/mapbox-gl-test-suite.git#bbf55fb517eb2d55ba34dd0dced80af425e6db0d",
-    "request": "^2.65.0",
-    "tape": "^4.2.1"
+    "aws-sdk": "^2.2.21",
+    "mapbox-gl-test-suite": "mapbox/mapbox-gl-test-suite#6e2b48155ca651b37826942f2ca082be687b7a42",
+    "node-gyp": "^3.2.1",
+    "request": "^2.67.0",
+    "tape": "^4.2.2"
   },
   "scripts": {
     "install": "node-pre-gyp install --fallback-to-build=false || make node",

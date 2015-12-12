@@ -1,8 +1,10 @@
 #include "node_map.hpp"
+#include "node_request.hpp"
+#include "node_mapbox_gl_native.hpp"
 
 #include <mbgl/platform/default/headless_display.hpp>
-#include <mbgl/map/still_image.hpp>
 #include <mbgl/util/exception.hpp>
+#include <mbgl/util/work_request.hpp>
 
 #include <unistd.h>
 
@@ -42,7 +44,7 @@ const static char* releasedMessage() {
 NAN_MODULE_INIT(NodeMap::Init) {
     v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
 
-    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    tpl->InstanceTemplate()->SetInternalFieldCount(2);
     tpl->SetClassName(Nan::New("Map").ToLocalChecked());
 
     Nan::SetPrototypeMethod(tpl, "load", Load);
@@ -107,21 +109,24 @@ NAN_METHOD(NodeMap::New) {
 
     auto options = info[0]->ToObject();
 
-    // Check that 'request', 'cancel' and 'ratio' are defined.
+    // Check that 'request' is set. If 'cancel' is set it must be a
+    // function and if 'ratio' is set it must be a number.
     if (!Nan::Has(options, Nan::New("request").ToLocalChecked()).FromJust()
      || !Nan::Get(options, Nan::New("request").ToLocalChecked()).ToLocalChecked()->IsFunction()) {
         return Nan::ThrowError("Options object must have a 'request' method");
     }
 
-    if ( Nan::Has(options, Nan::New("cancel").ToLocalChecked()).FromJust()
+    if (Nan::Has(options, Nan::New("cancel").ToLocalChecked()).FromJust()
      && !Nan::Get(options, Nan::New("cancel").ToLocalChecked()).ToLocalChecked()->IsFunction()) {
         return Nan::ThrowError("Options object 'cancel' property must be a function");
     }
 
-    if (!Nan::Has(options, Nan::New("ratio").ToLocalChecked()).FromJust()
-     || !Nan::Get(options, Nan::New("ratio").ToLocalChecked()).ToLocalChecked()->IsNumber()) {
-        return Nan::ThrowError("Options object must have a numerical 'ratio' property");
+    if (Nan::Has(options, Nan::New("ratio").ToLocalChecked()).FromJust()
+     && !Nan::Get(options, Nan::New("ratio").ToLocalChecked()).ToLocalChecked()->IsNumber()) {
+        return Nan::ThrowError("Options object 'ratio' property must be a number");
     }
+
+    info.This()->SetInternalField(1, options);
 
     try {
         auto nodeMap = new NodeMap(options);
@@ -210,9 +215,12 @@ std::unique_ptr<NodeMap::RenderOptions> NodeMap::ParseOptions(v8::Local<v8::Obje
     }
 
     if (Nan::Has(obj, Nan::New("center").ToLocalChecked()).FromJust()) {
-        auto center = Nan::Get(obj, Nan::New("center").ToLocalChecked()).ToLocalChecked().As<v8::Array>();
-        if (center->Length() > 0) { options->latitude = Nan::Get(center, 0).ToLocalChecked()->NumberValue(); }
-        if (center->Length() > 1) { options->longitude = Nan::Get(center, 1).ToLocalChecked()->NumberValue(); }
+        auto centerObj = Nan::Get(obj, Nan::New("center").ToLocalChecked()).ToLocalChecked();
+        if (centerObj->IsArray()) {
+            auto center = centerObj.As<v8::Array>();
+            if (center->Length() > 0) { options->longitude = Nan::Get(center, 0).ToLocalChecked()->NumberValue(); }
+            if (center->Length() > 1) { options->latitude = Nan::Get(center, 1).ToLocalChecked()->NumberValue(); }
+        }
     }
 
     if (Nan::Has(obj, Nan::New("width").ToLocalChecked()).FromJust()) {
@@ -243,7 +251,7 @@ std::unique_ptr<NodeMap::RenderOptions> NodeMap::ParseOptions(v8::Local<v8::Obje
  * @param {number} [options.zoom=0]
  * @param {number} [options.width=512]
  * @param {number} [options.height=512]
- * @param {Array<number>} [options.center=[0,0]] latitude, longitude center
+ * @param {Array<number>} [options.center=[0,0]] longitude, latitude center
  * of the map
  * @param {number} [options.bearing=0] rotation
  * @param {Array<string>} [options.classes=[]] GL Style Classes
@@ -275,7 +283,7 @@ NAN_METHOD(NodeMap::Render) {
     auto options = ParseOptions(info[0]->ToObject());
 
     assert(!nodeMap->callback);
-    assert(!nodeMap->image);
+    assert(!nodeMap->image.data);
     nodeMap->callback = std::make_unique<Nan::Callback>(info[1].As<v8::Function>());
 
     try {
@@ -295,12 +303,12 @@ void NodeMap::startRender(std::unique_ptr<NodeMap::RenderOptions> options) {
     map->setBearing(options->bearing);
     map->setPitch(options->pitch);
 
-    map->renderStill([this](const std::exception_ptr eptr, std::unique_ptr<const mbgl::StillImage> result) {
+    map->renderStill([this](const std::exception_ptr eptr, mbgl::PremultipliedImage&& result) {
         if (eptr) {
             error = std::move(eptr);
             uv_async_send(async);
         } else {
-            assert(!image);
+            assert(!image.data);
             image = std::move(result);
             uv_async_send(async);
         }
@@ -332,7 +340,7 @@ void NodeMap::renderFinished() {
 
     // These have to be empty to be prepared for the next render call.
     assert(!callback);
-    assert(!image);
+    assert(!image.data);
 
     if (error) {
         std::string errorMessage;
@@ -352,18 +360,16 @@ void NodeMap::renderFinished() {
         assert(!error);
 
         cb->Call(1, argv);
-    } else if (img) {
+    } else if (img.data) {
         v8::Local<v8::Object> pixels = Nan::NewBuffer(
-            reinterpret_cast<char *>(img->pixels.get()),
-            size_t(img->width) * size_t(img->height) * sizeof(mbgl::StillImage::Pixel),
-
-            // Retain the StillImage object until the buffer is deleted.
-            [](char *, void *hint) {
-                delete reinterpret_cast<const mbgl::StillImage *>(hint);
+            reinterpret_cast<char *>(img.data.get()), img.size(),
+            // Retain the data until the buffer is deleted.
+            [](char *, void * hint) {
+                delete [] reinterpret_cast<uint8_t*>(hint);
             },
-            const_cast<mbgl::StillImage *>(img.get())
+            img.data.get()
         ).ToLocalChecked();
-        img.release();
+        img.data.release();
 
         v8::Local<v8::Value> argv[] = {
             Nan::Null(),
@@ -402,8 +408,8 @@ void NodeMap::release() {
 
     valid = false;
 
-    uv_close(reinterpret_cast<uv_handle_t *>(async), [] (uv_handle_t *handle) {
-        delete reinterpret_cast<uv_async_t *>(handle);
+    uv_close(reinterpret_cast<uv_handle_t *>(async), [] (uv_handle_t *h) {
+        delete reinterpret_cast<uv_async_t *>(h);
     });
 
     map.reset(nullptr);
@@ -424,15 +430,14 @@ NAN_METHOD(NodeMap::DumpDebugLogs) {
 NodeMap::NodeMap(v8::Local<v8::Object> options) :
     view(sharedDisplay(), [&] {
         Nan::HandleScope scope;
-        return Nan::Get(options, Nan::New("ratio").ToLocalChecked()).ToLocalChecked()->NumberValue();
+        return Nan::Has(options, Nan::New("ratio").ToLocalChecked()).FromJust() ? Nan::Get(options, Nan::New("ratio").ToLocalChecked()).ToLocalChecked()->NumberValue() : 1.0;
     }()),
-    fs(options),
-    map(std::make_unique<mbgl::Map>(view, fs, mbgl::MapMode::Still)),
+    map(std::make_unique<mbgl::Map>(view, *this, mbgl::MapMode::Still)),
     async(new uv_async_t) {
 
     async->data = this;
-    uv_async_init(uv_default_loop(), async, [](UV_ASYNC_PARAMS(handle)) {
-        reinterpret_cast<NodeMap *>(handle->data)->renderFinished();
+    uv_async_init(uv_default_loop(), async, [](UV_ASYNC_PARAMS(h)) {
+        reinterpret_cast<NodeMap *>(h->data)->renderFinished();
     });
 
     // Make sure the async handle doesn't keep the loop alive.
@@ -441,6 +446,29 @@ NodeMap::NodeMap(v8::Local<v8::Object> options) :
 
 NodeMap::~NodeMap() {
     if (valid) release();
+}
+
+class NodeFileSourceRequest : public mbgl::FileRequest {
+public:
+    std::unique_ptr<mbgl::WorkRequest> workRequest;
+};
+
+std::unique_ptr<mbgl::FileRequest> NodeMap::request(const mbgl::Resource& resource, Callback cb1) {
+    auto req = std::make_unique<NodeFileSourceRequest>();
+
+    // This function can be called from any thread. Make sure we're executing the
+    // JS implementation in the node event loop.
+    req->workRequest = NodeRunLoop().invokeWithCallback([this] (mbgl::Resource res, Callback cb2) {
+        Nan::HandleScope scope;
+
+        auto requestHandle = NodeRequest::Create(res, cb2)->ToObject();
+        auto callbackHandle = Nan::GetFunction(Nan::New<v8::FunctionTemplate>(NodeRequest::Respond, requestHandle)).ToLocalChecked();
+
+        v8::Local<v8::Value> argv[] = { requestHandle, callbackHandle };
+        Nan::MakeCallback(handle()->GetInternalField(1)->ToObject(), "request", 2, argv);
+    }, cb1, resource);
+
+    return std::move(req);
 }
 
 }

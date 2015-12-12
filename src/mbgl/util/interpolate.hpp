@@ -46,9 +46,10 @@ template<> inline TextJustifyType interpolate(const TextJustifyType a, const Tex
 template<> inline TextTransformType interpolate(const TextTransformType a, const TextTransformType, const double) { return a; }
 template<> inline RotationAlignmentType interpolate(const RotationAlignmentType a, const RotationAlignmentType, const double) { return a; }
 
+template<> inline Faded<std::string> interpolate(const Faded<std::string>, const Faded<std::string> b, const double) { return b; }
+template<> inline Faded<std::vector<float>> interpolate(const Faded<std::vector<float>>, const Faded<std::vector<float>> b, const double) { return b; }
 
-
-}
-}
+} // namespace util
+} // namespace mbgl
 
 #endif

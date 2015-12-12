@@ -1,48 +1,57 @@
 #include <mbgl/layer/fill_layer.hpp>
-#include <mbgl/style/property_parsing.hpp>
 #include <mbgl/style/style_bucket_parameters.hpp>
 #include <mbgl/renderer/fill_bucket.hpp>
 
 namespace mbgl {
 
-void FillLayer::parsePaints(const JSVal& layer) {
-    paints.parseEach(layer, [&] (ClassProperties& paint, const JSVal& value) {
-        parseProperty<Function<bool>>("fill-antialias", PropertyKey::FillAntialias, paint, value);
-        parseProperty<Function<float>>("fill-opacity", PropertyKey::FillOpacity, paint, value);
-        parseProperty<PropertyTransition>("fill-opacity-transition", PropertyKey::FillOpacity, paint, value);
-        parseProperty<Function<Color>>("fill-color", PropertyKey::FillColor, paint, value);
-        parseProperty<PropertyTransition>("fill-color-transition", PropertyKey::FillColor, paint, value);
-        parseProperty<Function<Color>>("fill-outline-color", PropertyKey::FillOutlineColor, paint, value);
-        parseProperty<PropertyTransition>("fill-outline-color-transition", PropertyKey::FillOutlineColor, paint, value);
-        parseProperty<Function<std::array<float, 2>>>("fill-translate", PropertyKey::FillTranslate, paint, value);
-        parseProperty<PropertyTransition>("fill-translate-transition", PropertyKey::FillTranslate, paint, value);
-        parseProperty<Function<TranslateAnchorType>>("fill-translate-anchor", PropertyKey::FillTranslateAnchor, paint, value);
-        parseProperty<PiecewiseConstantFunction<Faded<std::string>>>("fill-pattern", PropertyKey::FillImage, paint, value, "fill-pattern-transition");
-    });
+std::unique_ptr<StyleLayer> FillLayer::clone() const {
+    return std::make_unique<FillLayer>(*this);
 }
 
-void FillLayer::recalculate(const StyleCalculationParameters& parameters) {
-    paints.removeExpiredTransitions(parameters.now);
+void FillLayer::parsePaints(const JSVal& layer) {
+    paint.antialias.parse("fill-antialias", layer);
+    paint.opacity.parse("fill-opacity", layer);
+    paint.color.parse("fill-color", layer);
+    paint.outlineColor.parse("fill-outline-color", layer);
+    paint.translate.parse("fill-translate", layer);
+    paint.translateAnchor.parse("fill-translate-anchor", layer);
+    paint.pattern.parse("fill-pattern", layer);
+}
 
-    paints.calculate(PropertyKey::FillAntialias, properties.antialias, parameters);
-    paints.calculateTransitioned(PropertyKey::FillOpacity, properties.opacity, parameters);
-    paints.calculateTransitioned(PropertyKey::FillColor, properties.fill_color, parameters);
-    paints.calculateTransitioned(PropertyKey::FillOutlineColor, properties.stroke_color, parameters);
-    paints.calculateTransitioned(PropertyKey::FillTranslate, properties.translate, parameters);
-    paints.calculate(PropertyKey::FillTranslateAnchor, properties.translateAnchor, parameters);
-    paints.calculate(PropertyKey::FillImage, properties.image, parameters);
+void FillLayer::cascade(const StyleCascadeParameters& parameters) {
+    paint.antialias.cascade(parameters);
+    paint.opacity.cascade(parameters);
+    paint.color.cascade(parameters);
+    paint.outlineColor.cascade(parameters);
+    paint.translate.cascade(parameters);
+    paint.translateAnchor.cascade(parameters);
+    paint.pattern.cascade(parameters);
+}
+
+bool FillLayer::recalculate(const StyleCalculationParameters& parameters) {
+    bool hasTransitions = false;
+
+    hasTransitions |= paint.antialias.calculate(parameters);
+    hasTransitions |= paint.opacity.calculate(parameters);
+    hasTransitions |= paint.color.calculate(parameters);
+    hasTransitions |= paint.outlineColor.calculate(parameters);
+    hasTransitions |= paint.translate.calculate(parameters);
+    hasTransitions |= paint.translateAnchor.calculate(parameters);
+    hasTransitions |= paint.pattern.calculate(parameters);
 
     passes = RenderPass::None;
 
-    if (properties.antialias) {
+    if (paint.antialias) {
         passes |= RenderPass::Translucent;
     }
 
-    if (!properties.image.from.empty() || (properties.fill_color[3] * properties.opacity) < 1.0f) {
+    if (!paint.pattern.value.from.empty() || (paint.color.value[3] * paint.opacity) < 1.0f) {
         passes |= RenderPass::Translucent;
     } else {
         passes |= RenderPass::Opaque;
     }
+
+    return hasTransitions;
 }
 
 std::unique_ptr<Bucket> FillLayer::createBucket(StyleBucketParameters& parameters) const {
@@ -55,4 +64,4 @@ std::unique_ptr<Bucket> FillLayer::createBucket(StyleBucketParameters& parameter
     return std::move(bucket);
 }
 
-}
+} // namespace mbgl

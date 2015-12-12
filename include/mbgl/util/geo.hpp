@@ -3,9 +3,13 @@
 
 #include <mbgl/util/vec.hpp>
 
+#include <cmath>
+
 namespace mbgl {
 
 class TileID;
+
+using PrecisionPoint = vec2<double>;
 
 struct LatLng {
     double latitude = 0;
@@ -14,10 +18,14 @@ struct LatLng {
     inline LatLng(double lat = 0, double lon = 0)
         : latitude(lat), longitude(lon) {}
 
+    inline operator bool() const {
+        return !(std::isnan(latitude) || std::isnan(longitude));
+    }
+
     // Constructs a LatLng object with the top left position of the specified tile.
     LatLng(const TileID& id);
 
-    vec2<double> project() const;
+    PrecisionPoint project() const;
 };
 
 struct ProjectedMeters {
@@ -26,14 +34,29 @@ struct ProjectedMeters {
 
     inline ProjectedMeters(double n = 0, double e = 0)
         : northing(n), easting(e) {}
+
+    inline operator bool() const {
+        return !(std::isnan(northing) || std::isnan(easting));
+    }
 };
 
 struct LatLngBounds {
-    LatLng sw = {90, 180};
-    LatLng ne = {-90, -180};
+    LatLng sw = {-90, -180};
+    LatLng ne = {90, 180};
 
-    inline LatLngBounds(LatLng sw_ = {90, 180}, LatLng ne_ = {-90, -180})
+    inline LatLngBounds() {}
+
+    inline LatLngBounds(const LatLng& sw_, const LatLng& ne_)
         : sw(sw_), ne(ne_) {}
+
+    static inline LatLngBounds getExtendable() {
+        LatLngBounds bounds;
+        return { bounds.ne, bounds.sw };
+    }
+
+    inline operator bool() const {
+        return sw && ne;
+    }
 
     // Constructs a LatLngBounds object with the tile's exact boundaries.
     LatLngBounds(const TileID& id);
@@ -65,6 +88,18 @@ struct LatLngBounds {
     }
 };
 
-}
+struct MetersBounds {
+    ProjectedMeters sw;
+    ProjectedMeters ne;
+
+    inline MetersBounds(const ProjectedMeters& sw_, const ProjectedMeters& ne_)
+        : sw(sw_), ne(ne_) {}
+
+    inline operator bool() const {
+        return sw && ne;
+    }
+};
+
+} // namespace mbgl
 
 #endif

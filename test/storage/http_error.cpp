@@ -1,34 +1,27 @@
 #include "storage.hpp"
 
-#include <uv.h>
-
 #include <mbgl/storage/default_file_source.hpp>
 #include <mbgl/storage/network_status.hpp>
+#include <mbgl/util/chrono.hpp>
+#include <mbgl/util/run_loop.hpp>
 
 #include <cmath>
 
-#if UV_VERSION_MAJOR == 0 && UV_VERSION_MINOR <= 10
-#define UV_TIMER_PARAMS uv_timer_t*, int
-#else
-#define UV_TIMER_PARAMS uv_timer_t*
-#endif
-
-TEST_F(Storage, HTTPError) {
+TEST_F(Storage, HTTPTemporaryError) {
     SCOPED_TEST(HTTPTemporaryError)
-    SCOPED_TEST(HTTPConnectionError)
 
     using namespace mbgl;
 
+    util::RunLoop loop;
     DefaultFileSource fs(nullptr);
 
-    const auto start = uv_hrtime();
+    const auto start = Clock::now();
 
-    Request* req1 = fs.request({ Resource::Unknown, "http://127.0.0.1:3000/temporary-error" }, uv_default_loop(),
-               [&](const Response &res) {
+    std::unique_ptr<FileRequest> req1 = fs.request({ Resource::Unknown, "http://127.0.0.1:3000/temporary-error" }, [&](Response res) {
         static int counter = 0;
         switch (counter++) {
         case 0: {
-            const auto duration = double(uv_hrtime() - start) / 1e9;
+            const auto duration = std::chrono::duration<const double>(Clock::now() - start).count();
             EXPECT_GT(0.2, duration) << "Initial error request took too long";
             ASSERT_NE(nullptr, res.error);
             EXPECT_EQ(Response::Error::Reason::Server, res.error->reason);
@@ -36,32 +29,45 @@ TEST_F(Storage, HTTPError) {
             EXPECT_EQ(false, res.stale);
             ASSERT_TRUE(res.data.get());
             EXPECT_EQ("", *res.data);
-            EXPECT_EQ(0, res.expires);
-            EXPECT_EQ(0, res.modified);
+            EXPECT_EQ(Seconds::zero(), res.expires);
+            EXPECT_EQ(Seconds::zero(), res.modified);
             EXPECT_EQ("", res.etag);
         } break;
         case 1: {
-            fs.cancel(req1);
-            const auto duration = double(uv_hrtime() - start) / 1e9;
+            req1.reset();
+            const auto duration = std::chrono::duration<const double>(Clock::now() - start).count();
             EXPECT_LT(0.99, duration) << "Backoff timer didn't wait 1 second";
             EXPECT_GT(1.2, duration) << "Backoff timer fired too late";
             EXPECT_EQ(nullptr, res.error);
             EXPECT_EQ(false, res.stale);
             ASSERT_TRUE(res.data.get());
             EXPECT_EQ("Hello World!", *res.data);
-            EXPECT_EQ(0, res.expires);
-            EXPECT_EQ(0, res.modified);
+            EXPECT_EQ(Seconds::zero(), res.expires);
+            EXPECT_EQ(Seconds::zero(), res.modified);
             EXPECT_EQ("", res.etag);
+            loop.stop();
             HTTPTemporaryError.finish();
         } break;
         }
     });
 
-    Request* req2 = fs.request({ Resource::Unknown, "http://127.0.0.1:3001/" }, uv_default_loop(),
-               [&](const Response &res) {
+    loop.run();
+}
+
+TEST_F(Storage, HTTPConnectionError) {
+    SCOPED_TEST(HTTPConnectionError)
+
+    using namespace mbgl;
+
+    util::RunLoop loop;
+    DefaultFileSource fs(nullptr);
+
+    const auto start = Clock::now();
+
+    std::unique_ptr<FileRequest> req2 = fs.request({ Resource::Unknown, "http://127.0.0.1:3001/" }, [&](Response res) {
         static int counter = 0;
         static int wait = 0;
-        const auto duration = double(uv_hrtime() - start) / 1e9;
+        const auto duration = std::chrono::duration<const double>(Clock::now() - start).count();
         EXPECT_LT(wait - 0.01, duration) << "Backoff timer didn't wait 1 second";
         EXPECT_GT(wait + 0.2, duration) << "Backoff timer fired too late";
         ASSERT_NE(nullptr, res.error);
@@ -79,17 +85,18 @@ TEST_F(Storage, HTTPError) {
 #endif
         EXPECT_EQ(false, res.stale);
         ASSERT_FALSE(res.data.get());
-        EXPECT_EQ(0, res.expires);
-        EXPECT_EQ(0, res.modified);
+        EXPECT_EQ(Seconds::zero(), res.expires);
+        EXPECT_EQ(Seconds::zero(), res.modified);
         EXPECT_EQ("", res.etag);
 
         if (counter == 2) {
-            fs.cancel(req2);
+            req2.reset();
+            loop.stop();
             HTTPConnectionError.finish();
         }
         wait += (1 << counter);
         counter++;
     });
 
-    uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+    loop.run();
 }

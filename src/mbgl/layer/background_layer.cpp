@@ -1,28 +1,38 @@
 #include <mbgl/layer/background_layer.hpp>
-#include <mbgl/style/property_parsing.hpp>
+#include <mbgl/renderer/bucket.hpp>
 
 namespace mbgl {
 
-void BackgroundLayer::parsePaints(const JSVal& layer) {
-    paints.parseEach(layer, [&] (ClassProperties& paint, const JSVal& value) {
-        parseProperty<Function<float>>("background-opacity", PropertyKey::BackgroundOpacity, paint, value);
-        parseProperty<Function<Color>>("background-color", PropertyKey::BackgroundColor, paint, value);
-        parseProperty<PiecewiseConstantFunction<Faded<std::string>>>("background-pattern", PropertyKey::BackgroundImage, paint, value, "background-pattern-transition");
-    });
+std::unique_ptr<StyleLayer> BackgroundLayer::clone() const {
+    return std::make_unique<BackgroundLayer>(*this);
 }
 
-void BackgroundLayer::recalculate(const StyleCalculationParameters& parameters) {
-    paints.removeExpiredTransitions(parameters.now);
+void BackgroundLayer::parsePaints(const JSVal& layer) {
+    paint.opacity.parse("background-opacity", layer);
+    paint.color.parse("background-color", layer);
+    paint.pattern.parse("background-pattern", layer);
+}
 
-    paints.calculateTransitioned(PropertyKey::BackgroundOpacity, properties.opacity, parameters);
-    paints.calculateTransitioned(PropertyKey::BackgroundColor, properties.color, parameters);
-    paints.calculate(PropertyKey::BackgroundImage, properties.image, parameters);
+void BackgroundLayer::cascade(const StyleCascadeParameters& parameters) {
+    paint.opacity.cascade(parameters);
+    paint.color.cascade(parameters);
+    paint.pattern.cascade(parameters);
+}
 
-    passes = properties.isVisible() ? RenderPass::Translucent : RenderPass::None;
+bool BackgroundLayer::recalculate(const StyleCalculationParameters& parameters) {
+    bool hasTransitions = false;
+
+    hasTransitions |= paint.opacity.calculate(parameters);
+    hasTransitions |= paint.color.calculate(parameters);
+    hasTransitions |= paint.pattern.calculate(parameters);
+
+    passes = paint.opacity > 0 ? RenderPass::Translucent : RenderPass::None;
+
+    return hasTransitions;
 }
 
 std::unique_ptr<Bucket> BackgroundLayer::createBucket(StyleBucketParameters&) const {
     return nullptr;
 }
 
-}
+} // namespace mbgl

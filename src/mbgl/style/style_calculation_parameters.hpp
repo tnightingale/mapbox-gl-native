@@ -8,7 +8,7 @@ namespace mbgl {
 
 class StyleCalculationParameters {
 public:
-    StyleCalculationParameters(float z_)
+    explicit StyleCalculationParameters(float z_)
         : z(z_) {}
 
     StyleCalculationParameters(float z_,
@@ -26,6 +26,6 @@ public:
     Duration defaultFadeDuration;
 };
 
-}
+} // namespace mbgl
 
 #endif

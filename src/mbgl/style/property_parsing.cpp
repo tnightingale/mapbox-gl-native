@@ -1,34 +1,14 @@
 #include <mbgl/style/property_parsing.hpp>
+#include <mbgl/style/property_transition.hpp>
+#include <mbgl/style/function.hpp>
 
 #include <mbgl/platform/log.hpp>
 
 #include <csscolorparser/csscolorparser.hpp>
 
+#include <vector>
+
 namespace mbgl {
-namespace detail {
-
-optional<std::vector<float>> parseFloatArray(const JSVal& value) {
-    if (!value.IsArray()) {
-        Log::Warning(Event::ParseStyle, "dasharray value must be an array of numbers");
-        return {};
-    }
-
-    std::vector<float> result;
-
-    for (rapidjson::SizeType i = 0; i < value.Size(); ++i) {
-        const JSVal& part = value[i];
-
-        if (!part.IsNumber()) {
-            Log::Warning(Event::ParseStyle, "dasharray value must be an array of numbers");
-            return {};
-        }
-
-        result.push_back(part.GetDouble());
-    }
-
-    return result;
-}
-
 
 template <>
 optional<bool> parseProperty(const char* name, const JSVal& value) {
@@ -206,6 +186,29 @@ optional<std::array<float, 2>> parseProperty(const char* name, const JSVal& valu
 }
 
 template <>
+optional<std::vector<float>> parseProperty(const char* name, const JSVal& value) {
+    if (!value.IsArray()) {
+        Log::Warning(Event::ParseStyle, "value of '%s' must be an array of numbers", name);
+        return {};
+    }
+
+    std::vector<float> result;
+
+    for (rapidjson::SizeType i = 0; i < value.Size(); ++i) {
+        const JSVal& part = value[i];
+
+        if (!part.IsNumber()) {
+            Log::Warning(Event::ParseStyle, "value of '%s' must be an array of numbers", name);
+            return {};
+        }
+
+        result.push_back(part.GetDouble());
+    }
+
+    return result;
+}
+
+template <>
 optional<PropertyTransition> parseProperty(const char *, const JSVal& value) {
     PropertyTransition transition;
     if (value.IsObject()) {
@@ -273,7 +276,7 @@ optional<Function<T>> parseFunction(const char* name, const JSVal& value) {
         if (!constant) {
             return {};
         }
-        return { ConstantFunction<T>(*constant) };
+        return { Function<T>(*constant) };
     }
 
     if (!value.HasMember("stops")) {
@@ -300,7 +303,7 @@ optional<Function<T>> parseFunction(const char* name, const JSVal& value) {
         return {};
     }
 
-    return { StopsFunction<T>(*stops, base) };
+    return { Function<T>(*stops, base) };
 }
 
 template <> optional<Function<std::array<float, 2>>> parseProperty(const char* name, const JSVal& value) {
@@ -360,12 +363,7 @@ template<> optional<Function<Color>> parseProperty(const char* name, const JSVal
 }
 
 template <typename T>
-optional<PiecewiseConstantFunction<T>> parsePiecewiseConstantFunction(const JSVal& value, const JSVal& transition) {
-    mapbox::util::optional<Duration> duration;
-    if (transition.HasMember("duration")) {
-        duration = std::chrono::milliseconds(transition["duration"].GetUint());
-    }
-
+optional<Function<Faded<T>>> parseFadedFunction(const JSVal& value) {
     if (!value.HasMember("stops")) {
         Log::Warning(Event::ParseStyle, "function must specify a function type");
         return {};
@@ -377,58 +375,33 @@ optional<PiecewiseConstantFunction<T>> parsePiecewiseConstantFunction(const JSVa
         return {};
     }
 
-    return PiecewiseConstantFunction<T>(*stops, duration);
+    return Function<Faded<T>>(*stops);
 }
 
 template <>
-optional<Faded<std::vector<float>>> parseProperty(const char*, const JSVal& value) {
-    auto floatarray = parseFloatArray(value);
-    if (!floatarray) {
-        return {};
-    }
-
-    Faded<std::vector<float>> parsed;
-    parsed.to = *floatarray;
-    return parsed;
-}
-
-template <>
-optional<Faded<std::string>> parseProperty(const char* name, const JSVal& value) {
-    if (!value.IsString()) {
-        Log::Warning(Event::ParseStyle, "value of '%s' must be a string, or a string function", name);
-        return {};
-    }
-
-    Faded<std::string> parsed;
-    parsed.to = { value.GetString(), value.GetStringLength() };
-    return parsed;
-}
-
-template <>
-optional<PiecewiseConstantFunction<Faded<std::vector<float>>>> parseProperty(const char* name, const JSVal& value, const JSVal& transition) {
+optional<Function<Faded<std::vector<float>>>> parseProperty(const char* name, const JSVal& value) {
     if (value.IsObject()) {
-        return parsePiecewiseConstantFunction<Faded<std::vector<float>>>(value, transition);
+        return parseFadedFunction<std::vector<float>>(value);
     }
 
-    auto constant = parseProperty<Faded<std::vector<float>>>(name, value);
+    auto constant = parseProperty<std::vector<float>>(name, value);
     if (!constant) {
         return {};
     }
-    return PiecewiseConstantFunction<Faded<std::vector<float>>>(*constant);
+    return Function<Faded<std::vector<float>>>(*constant);
 }
 
 template <>
-optional<PiecewiseConstantFunction<Faded<std::string>>> parseProperty(const char* name, const JSVal& value, const JSVal& transition) {
+optional<Function<Faded<std::string>>> parseProperty(const char* name, const JSVal& value) {
     if (value.IsObject()) {
-        return parsePiecewiseConstantFunction<Faded<std::string>>(value, transition);
+        return parseFadedFunction<std::string>(value);
     }
 
-    auto constant = parseProperty<Faded<std::string>>(name, value);
+    auto constant = parseProperty<std::string>(name, value);
     if (!constant) {
         return {};
     }
-    return PiecewiseConstantFunction<Faded<std::string>>(*constant);
+    return Function<Faded<std::string>>(*constant);
 }
 
-}
-}
+} // namespace mbgl

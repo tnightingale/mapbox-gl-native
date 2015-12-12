@@ -8,11 +8,17 @@ NAME=Mapbox
 OUTPUT=build/ios/pkg
 IOS_SDK_VERSION=`xcrun --sdk iphoneos --show-sdk-version`
 LIBUV_VERSION=1.7.5
+ENABLE_BITCODE=YES
 
 if [[ ${#} -eq 0 ]]; then # e.g. "make ipackage"
     BUILDTYPE="Release"
     BUILD_FOR_DEVICE=true
     GCC_GENERATE_DEBUGGING_SYMBOLS="YES"
+elif [[ ${1} == "no-bitcode" ]]; then # e.g. "make ipackage-no-bitcode"
+    BUILDTYPE="Release"
+    BUILD_FOR_DEVICE=true
+    GCC_GENERATE_DEBUGGING_SYMBOLS="YES"
+    ENABLE_BITCODE=NO
 elif [[ ${1} == "sim" ]]; then # e.g. "make ipackage-sim"
     BUILDTYPE="Debug"
     BUILD_FOR_DEVICE=false
@@ -53,7 +59,7 @@ if [[ "${BUILD_FOR_DEVICE}" == true ]]; then
         ARCHS="arm64 armv7 armv7s" \
         ONLY_ACTIVE_ARCH=NO \
         GCC_GENERATE_DEBUGGING_SYMBOLS=${GCC_GENERATE_DEBUGGING_SYMBOLS} \
-        ENABLE_BITCODE=YES \
+        ENABLE_BITCODE=${ENABLE_BITCODE} \
         DEPLOYMENT_POSTPROCESSING=YES \
         -project ./build/ios-all/gyp/mbgl.xcodeproj \
         -configuration ${BUILDTYPE} \
@@ -97,9 +103,6 @@ for i in `ls -R include/mbgl/ios | grep -vi private`; do
     cp -pv include/mbgl/ios/$i "${OUTPUT}/static/Headers"
 done
 
-step "Setting up dummy source file for CocoaPods 0.37.0..."
-echo "// https://github.com/mapbox/mapbox-gl-native/issues/1426" > "${OUTPUT}/static/MGLDummy.m"
-
 
 # Manually create resource bundle. We don't use a GYP target here because of
 # complications between faked GYP bundles-as-executables, device build
@@ -111,11 +114,10 @@ cp -pv platform/ios/resources/* "${OUTPUT}/static/${NAME}.bundle"
 
 step "Creating API Docs..."
 if [ -z `which appledoc` ]; then
-    echo "Unable to find appledoc. See https://github.com/mapbox/mapbox-gl-native/blob/master/INSTALL.md"
+    echo "Unable to find appledoc. See https://github.com/mapbox/mapbox-gl-native/blob/master/docs/BUILD_IOS_OSX.md"
     exit 1
 fi
 DOCS_OUTPUT="${OUTPUT}/static/Docs"
-git fetch --tags
 DOCS_VERSION=$( git tag | grep ^ios | sed 's/^ios-//' | sort -r | grep -v '\-rc.' | grep -v '\-pre.' | sed -n '1p' | sed 's/^v//' )
 rm -rf /tmp/mbgl
 mkdir -p /tmp/mbgl/
@@ -123,7 +125,7 @@ README=/tmp/mbgl/README.md
 cat ios/docs/pod-README.md > ${README}
 echo >> ${README}
 echo -n "#" >> ${README}
-cat CHANGELOG.md >> ${README}
+cat CHANGELOG.md | sed -n "/^## iOS ${DOCS_VERSION}/,/^##/p" | sed '$d' >> ${README}
 # Copy headers to a temporary location where we can substitute macros that appledoc doesn't understand.
 cp -r "${OUTPUT}/static/Headers" /tmp/mbgl
 perl \

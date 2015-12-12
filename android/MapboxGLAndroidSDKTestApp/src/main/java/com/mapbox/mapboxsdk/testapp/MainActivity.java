@@ -59,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Used for permissions requests
     private static final int PERMISSIONS_LOCATION = 0;
+    private static final int PERMISSIONS_TRACKING_MODE_ACTIVITY = 1;
 
     // Used for info window
     private static final DecimalFormat LAT_LON_FORMATTER = new DecimalFormat("#.#####");
@@ -100,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
 
         final ActionBar ab = getSupportActionBar();
         if (ab != null) {
-            ab.setHomeAsUpIndicator(R.drawable.ic_menu);
+            ab.setHomeAsUpIndicator(R.drawable.ic_menu_24dp);
             ab.setDisplayHomeAsUpEnabled(true);
         }
 
@@ -115,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
 
         mMapView = (MapView) findViewById(R.id.mainMapView);
         mMapView.setAccessToken(ApiAccess.getToken(this));
-        mMapView.setZoomControlsEnabled(true);
         mMapView.onCreate(savedInstanceState);
 
         mMapView.setOnFpsChangedListener(new MyOnFpsChangedListener());
@@ -217,14 +217,23 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
 
+        // We need to recheck permissions in case user revoked them via settings app
+        if ((ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) ||
+                (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                        != PackageManager.PERMISSION_GRANTED)) {
+            toggleGps(false);
+        }
+
         mMapView.onStart();
     }
 
+    // Called when our app comes into the foreground
     @Override
-    protected void onStop() {
-        super.onStop();
+    public void onResume() {
+        super.onResume();
 
-        mMapView.onStop();
+        mMapView.onResume();
     }
 
     // Called when our app goes into the background
@@ -235,12 +244,11 @@ public class MainActivity extends AppCompatActivity {
         mMapView.onPause();
     }
 
-    // Called when our app comes into the foreground
     @Override
-    public void onResume() {
-        super.onResume();
+    protected void onStop() {
+        super.onStop();
 
-        mMapView.onResume();
+        mMapView.onStop();
     }
 
     @Override
@@ -288,11 +296,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
-            case PERMISSIONS_LOCATION: {
-                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            case PERMISSIONS_LOCATION:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     enableGps();
                 }
-            }
+                break;
+
+            case PERMISSIONS_TRACKING_MODE_ACTIVITY:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startActivity(new Intent(getApplicationContext(), MyLocationTrackingModeActivity.class));
+                }
+                break;
         }
     }
 
@@ -307,8 +321,8 @@ public class MainActivity extends AppCompatActivity {
                         switch (menuItem.getItemId()) {
 
                             case R.id.action_debug:
-                                // Toggle debug mode
-                                mMapView.toggleDebug();
+                                // Cycle map debug options
+                                mMapView.cycleDebugOptions();
                                 toggleFpsCounter(mMapView.isDebugActive());
                                 return true;
 
@@ -326,12 +340,20 @@ public class MainActivity extends AppCompatActivity {
                                 startActivity(new Intent(getApplicationContext(), InfoWindowAdapterActivity.class));
                                 return true;
 
+                            case R.id.action_tilt:
+                                startActivity(new Intent(getApplicationContext(), TiltActivity.class));
+                                return true;
+
                             case R.id.action_map_fragment:
                                 startActivity(new Intent(getApplicationContext(), MapFragmentActivity.class));
                                 return true;
 
                             case R.id.action_press_for_marker:
                                 startActivity(new Intent(getApplicationContext(), PressForMarkerActivity.class));
+                                return true;
+
+                            case R.id.action_manual_zoom:
+                                startActivity(new Intent(getApplicationContext(), ManualZoomActivity.class));
                                 return true;
 
                             case R.id.action_bulk_markers:
@@ -342,12 +364,27 @@ public class MainActivity extends AppCompatActivity {
                                 startActivity(new Intent(getApplicationContext(), InfoWindowActivity.class));
                                 return true;
 
+                            case R.id.action_info_window_concurrent:
+                                startActivity(new Intent(getApplicationContext(), InfoWindowConcurrentActivity.class));
+                                return true;
+
                             case R.id.action_visible_bounds:
                                 startActivity(new Intent(getApplicationContext(), VisibleCoordinateBoundsActivity.class));
                                 return true;
 
                             case R.id.action_user_tracking_mode:
-                                startActivity(new Intent(getApplicationContext(), MyLocationTrackingModeActivity.class));
+                                if ((ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                        != PackageManager.PERMISSION_GRANTED) ||
+                                        (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)
+                                                != PackageManager.PERMISSION_GRANTED)) {
+                                    ActivityCompat.requestPermissions(MainActivity.this,
+                                            new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
+                                            PERMISSIONS_TRACKING_MODE_ACTIVITY);
+                                } else {
+                                    startActivity(new Intent(getApplicationContext(), MyLocationTrackingModeActivity.class));
+                                }
+
+
                                 return true;
 
                             case R.id.action_polyline:

@@ -19,9 +19,9 @@ In the Android SDK Manager also select and install "Android Support Repository" 
 
 ## Setting Mapbox Access Token
 
-_The demo applications use Mapbox vector tiles, which require a Mapbox account and API access token. Obtain an access token on the [Mapbox account page](https://www.mapbox.com/account/apps/)._
+_The demo applications use Mapbox vector tiles, which require a Mapbox account and API access token. Obtain an access token on the [Mapbox account page](https://www.mapbox.com/studio/account/tokens/)._
 
-gradle will take the value of the `MAPBOX_ACCESS_TOKEN` environ variable and save it to `android/java/MapboxGLAndroidSDKTestApp/src/main/res/raw/token.txt` where the app will read it from.
+gradle will take the value of the `MAPBOX_ACCESS_TOKEN` environ variable and save it to `"MapboxGLAndroidSDKTestApp/src/main/res/values/developer-config.xml` where the app will read it from.
 
 ## Building
 
@@ -29,6 +29,6 @@ Run:
 
     make android
 
-You can then open `android/java` in Android Studio via "Import project (Eclipse ADT, Gradle, etc.)".
+You can then open `android` in Android Studio via "Import project (Eclipse ADT, Gradle, etc.)".
 
 **Next: get your app [running on a hardware Android Device](docs/ANDROID_DEVICE.md) or [simulator](docs/ANDROID_SIMULATOR.md)**

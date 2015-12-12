@@ -10,6 +10,9 @@
       ],
 
       'sources': [
+        '../platform/default/async_task.cpp',
+        '../platform/default/run_loop.cpp',
+        '../platform/default/timer.cpp',
         '../platform/darwin/log_nslog.mm',
         '../platform/darwin/string_nsstring.mm',
         '../platform/darwin/application_root.mm',
@@ -54,6 +57,8 @@
         '../platform/ios/MGLAnnotationImage.m',
         '../include/mbgl/ios/MGLStyle.h',
         '../platform/ios/MGLStyle.mm',
+        '../platform/ios/MGLCategoryLoader.h',
+        '../platform/ios/MGLCategoryLoader.m',
         '../platform/ios/NSBundle+MGLAdditions.h',
         '../platform/ios/NSBundle+MGLAdditions.m',
         '../platform/ios/NSException+MGLAdditions.h',
@@ -63,6 +68,10 @@
         '../platform/ios/NSString+MGLAdditions.m',
         '../platform/ios/vendor/SMCalloutView/SMCalloutView.h',
         '../platform/ios/vendor/SMCalloutView/SMCalloutView.m',
+        '../platform/ios/vendor/Fabric/FABAttributes.h',
+        '../platform/ios/vendor/Fabric/FABKitProtocol.h',
+        '../platform/ios/vendor/Fabric/Fabric.h',
+        '../platform/ios/vendor/Fabric/Fabric+FABKits.h',
         '../platform/ios/resources/',
       ],
 
@@ -88,13 +97,13 @@
 
       'include_dirs': [
         '../include',
+        '../src',
       ],
 
       'xcode_settings': {
         'OTHER_CPLUSPLUSFLAGS': [ '<@(cflags_cc)' ],
         'CLANG_ENABLE_OBJC_ARC': 'YES',
         'CLANG_ENABLE_MODULES': 'YES',
-        'FRAMEWORK_SEARCH_PATHS': '../platform/ios/vendor',
       },
 
       'link_settings': {

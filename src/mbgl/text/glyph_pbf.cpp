@@ -59,7 +59,7 @@ void parseGlyphPBF(mbgl::FontStack& stack, const std::string& data) {
     }
 }
 
-}
+} // namespace
 
 namespace mbgl {
 
@@ -74,7 +74,7 @@ GlyphPBF::GlyphPBF(GlyphStore* store,
         return "";
     });
 
-    auto requestCallback = [this, store, fontStack, url](const Response &res) {
+    auto requestCallback = [this, store, fontStack, url](Response res) {
         if (res.stale) {
             // Only handle fresh responses.
             return;
@@ -93,7 +93,7 @@ GlyphPBF::GlyphPBF(GlyphStore* store,
 
     Resource resource = { Resource::Kind::Glyphs, url };
     FileSource* fs = util::ThreadContext::getFileSourceHandlingResource(resource);
-    req = fs->request(resource, util::RunLoop::getLoop(), requestCallback);
+    req = fs->request(resource, requestCallback);
 }
 
 GlyphPBF::~GlyphPBF() = default;
@@ -139,4 +139,4 @@ void GlyphPBF::emitGlyphPBFLoadingFailed(const std::string& message) {
     observer->onGlyphPBFLoadingFailed(error);
 }
 
-}
+} // namespace mbgl

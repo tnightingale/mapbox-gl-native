@@ -10,7 +10,11 @@ namespace mbgl {
 const std::string AnnotationManager::SourceID = "com.mapbox.annotations";
 const std::string AnnotationManager::PointLayerID = "com.mapbox.annotations.points";
 
-AnnotationManager::AnnotationManager() = default;
+AnnotationManager::AnnotationManager(float pixelRatio)
+    : spriteStore(pixelRatio),
+      spriteAtlas(512, 512, pixelRatio, spriteStore) {
+}
+
 AnnotationManager::~AnnotationManager() = default;
 
 AnnotationIDs
@@ -68,7 +72,7 @@ AnnotationIDs AnnotationManager::getPointAnnotationsInBounds(const LatLngBounds&
 }
 
 LatLngBounds AnnotationManager::getBoundsForAnnotations(const AnnotationIDs& ids) const {
-    LatLngBounds result;
+    LatLngBounds result = LatLngBounds::getExtendable();
 
     for (const auto& id : ids) {
         if (pointAnnotations.find(id) != pointAnnotations.end()) {
@@ -116,12 +120,11 @@ void AnnotationManager::updateStyle(Style& style) {
 
         std::unique_ptr<SymbolLayer> layer = std::make_unique<SymbolLayer>();
         layer->id = PointLayerID;
-        layer->type = StyleLayerType::Symbol;
-
         layer->source = SourceID;
         layer->sourceLayer = PointLayerID;
-        layer->layout.set(PropertyKey::IconImage, ConstantFunction<std::string>("{sprite}"));
-        layer->layout.set(PropertyKey::IconAllowOverlap, ConstantFunction<bool>(true));
+        layer->layout.icon.image = std::string("{sprite}");
+        layer->layout.icon.allowOverlap = true;
+        layer->spriteAtlas = &spriteAtlas;
 
         style.addLayer(std::move(layer));
     }
@@ -152,4 +155,14 @@ void AnnotationManager::removeTileMonitor(AnnotationTileMonitor& monitor) {
     monitors.erase(&monitor);
 }
 
+void AnnotationManager::addIcon(const std::string& name, std::shared_ptr<const SpriteImage> sprite) {
+    spriteStore.setSprite(name, sprite);
+    spriteAtlas.updateDirty();
 }
+
+double AnnotationManager::getTopOffsetPixelsForIcon(const std::string& name) {
+    auto sprite = spriteStore.getSprite(name);
+    return sprite ? -sprite->height / 2 : 0;
+}
+
+} // namespace mbgl

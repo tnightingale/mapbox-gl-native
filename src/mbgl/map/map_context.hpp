@@ -5,15 +5,15 @@
 #include <mbgl/map/update.hpp>
 #include <mbgl/map/transform_state.hpp>
 #include <mbgl/map/map.hpp>
+#include <mbgl/map/map_data.hpp>
 #include <mbgl/style/style.hpp>
+#include <mbgl/util/async_task.hpp>
 #include <mbgl/util/gl_object_store.hpp>
 #include <mbgl/util/ptr.hpp>
 
-#include <vector>
+#include <mapbox/optional.hpp>
 
-namespace uv {
-class async;
-}
+#include <vector>
 
 namespace mbgl {
 
@@ -21,14 +21,9 @@ class View;
 class MapData;
 class TexturePool;
 class Painter;
-class Sprite;
-class Worker;
-class StillImage;
 class SpriteImage;
+class FileRequest;
 class FrontlineFileSource;
-struct LatLng;
-struct LatLngBounds;
-
 
 struct FrameData {
     std::array<uint16_t, 2> framebufferSize;
@@ -36,8 +31,10 @@ struct FrameData {
 
 class MapContext : public Style::Observer {
 public:
-    MapContext(View&, FileSource&, MapData&, const std::string& offlineMapPath = "");
+    MapContext(View&, FileSource&, MapMode, GLContextMode, const float pixelRatio, const std::string& offlineMapPath = "");
     ~MapContext();
+
+    MapData& getData() { return data; }
 
     void pause();
 
@@ -54,15 +51,19 @@ public:
 
     bool isLoaded() const;
 
-    double getTopOffsetPixelsForAnnotationSymbol(const std::string& symbol);
+    // Annotations
+    void addAnnotationIcon(const std::string&, std::shared_ptr<const SpriteImage>);
+    double getTopOffsetPixelsForAnnotationIcon(const std::string&);
     void updateAnnotations();
+    
+    // Style API
+    void addLayer(std::unique_ptr<StyleLayer>,
+                  const mapbox::util::optional<std::string> before);
 
     void setSourceTileCacheSize(size_t size);
     void onLowMemory();
 
     void cleanup();
-
-    void setSprite(const std::string&, std::shared_ptr<const SpriteImage>);
 
     // Style::Observer implementation.
     void onTileDataChanged() override;
@@ -78,13 +79,14 @@ private:
     void loadStyleJSON(const std::string& json, const std::string& base);
 
     View& view;
+    std::unique_ptr<MapData> dataPtr;
     MapData& data;
 
     util::GLObjectStore glObjectStore;
 
     Update updateFlags = Update::Nothing;
-    std::unique_ptr<uv::async> asyncUpdate;
-    std::unique_ptr<uv::async> asyncInvalidate;
+    util::AsyncTask asyncUpdate;
+    util::AsyncTask asyncInvalidate;
 
     std::unique_ptr<TexturePool> texturePool;
     std::unique_ptr<Painter> painter;
@@ -93,7 +95,7 @@ private:
     std::string styleURL;
     std::string styleJSON;
 
-    RequestHolder styleRequest;
+    std::unique_ptr<FileRequest> styleRequest;
 
     Map::StillImageCallback callback;
     size_t sourceCacheSize;
@@ -103,6 +105,6 @@ private:
     FrontlineFileSource *frontlineFileSource;
 };
 
-}
+} // namespace mbgl
 
 #endif

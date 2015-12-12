@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ -z `which appledoc` ]; then
-    echo "Unable to find appledoc. See https://github.com/mapbox/mapbox-gl-native/blob/master/INSTALL.md"
+    echo "Unable to find appledoc. See https://github.com/mapbox/mapbox-gl-native/blob/master/docs/BUILD_IOS_OSX.md"
     exit 1
 fi
 
@@ -17,7 +17,7 @@ README=/tmp/mbgl/GL-README.md
 cat ./pod-README.md > ${README}
 echo >> ${README}
 echo -n "#" >> ${README}
-cat ../../CHANGELOG.md >> ${README}
+cat ../../CHANGELOG.md | sed -n "/^## iOS ${DOCS_VERSION}/,/^##/p" | sed '$d' >> ${README}
 # Copy headers to a temporary location where we can substitute macros that appledoc doesn't understand.
 cp -r ../../include/mbgl/ios /tmp/mbgl
 perl \

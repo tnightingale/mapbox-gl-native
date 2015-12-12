@@ -15,8 +15,8 @@
 #include <mbgl/util/mapbox.hpp>
 #include <mbgl/storage/file_source.hpp>
 #include <mbgl/style/style_layer.hpp>
+#include <mbgl/style/style_update_parameters.hpp>
 #include <mbgl/platform/log.hpp>
-#include <mbgl/util/uv_detail.hpp>
 #include <mbgl/util/std.hpp>
 #include <mbgl/util/token.hpp>
 #include <mbgl/util/string.hpp>
@@ -149,7 +149,7 @@ void Source::load() {
 
     Resource resource = { Resource::Kind::Source, info.url };
     FileSource* fs = util::ThreadContext::getFileSourceHandlingResource(resource);
-    req = fs->request(resource, util::RunLoop::getLoop(), [this](const Response &res) {
+    req = fs->request(resource, [this](Response res) {
         if (res.stale) {
             // Only handle fresh responses.
             return;
@@ -233,26 +233,22 @@ TileData::State Source::hasTile(const TileID& id) {
 bool Source::handlePartialTile(const TileID& id, Worker&) {
     const TileID normalized_id = id.normalized();
 
-    auto it = tile_data.find(normalized_id);
-    if (it == tile_data.end()) {
+    auto it = tileDataMap.find(normalized_id);
+    if (it == tileDataMap.end()) {
         return true;
     }
 
-    auto data = it->second.lock();
-    if (!data) {
+    auto tileData = it->second.lock();
+    if (!tileData) {
         return true;
     }
 
-    return data->parsePending([this]() {
+    return tileData->parsePending([this]() {
         emitTileLoaded(false);
     });
 }
 
-TileData::State Source::addTile(MapData& data,
-                                const TransformState& transformState,
-                                Style& style,
-                                TexturePool& texturePool,
-                                const TileID& id) {
+TileData::State Source::addTile(const TileID& id, const StyleUpdateParameters& parameters) {
     const TileData::State state = hasTile(id);
 
     if (state != TileData::State::invalid) {
@@ -267,8 +263,8 @@ TileData::State Source::addTile(MapData& data,
     // Try to find the associated TileData object.
     const TileID normalized_id = id.normalized();
 
-    auto it = tile_data.find(normalized_id);
-    if (it != tile_data.end()) {
+    auto it = tileDataMap.find(normalized_id);
+    if (it != tileDataMap.end()) {
         // Create a shared_ptr handle. Note that this might be empty!
         new_tile.data = it->second.lock();
     }
@@ -283,20 +279,24 @@ TileData::State Source::addTile(MapData& data,
     }
 
     if (!new_tile.data) {
-        auto callback = std::bind(&Source::tileLoadingCompleteCallback, this, normalized_id, transformState, data.getCollisionDebug());
+        auto callback = std::bind(&Source::tileLoadingCompleteCallback, this, normalized_id, parameters.transformState, parameters.debugOptions & MapDebugOptions::Collision);
 
         // If we don't find working tile data, we're just going to load it.
         if (info.type == SourceType::Raster) {
-            auto tileData = std::make_shared<RasterTileData>(normalized_id, texturePool, info, style.workers);
-            tileData->request(data.pixelRatio, callback);
+            auto tileData = std::make_shared<RasterTileData>(normalized_id,
+                                                             parameters.texturePool,
+                                                             info,
+                                                             parameters.worker);
+
+            tileData->request(parameters.pixelRatio, callback);
             new_tile.data = tileData;
         } else {
             std::unique_ptr<GeometryTileMonitor> monitor;
 
             if (info.type == SourceType::Vector) {
-                monitor = std::make_unique<VectorTileMonitor>(info, normalized_id, data.pixelRatio);
+                monitor = std::make_unique<VectorTileMonitor>(info, normalized_id, parameters.pixelRatio);
             } else if (info.type == SourceType::Annotations) {
-                monitor = std::make_unique<AnnotationTileMonitor>(normalized_id, data);
+                monitor = std::make_unique<AnnotationTileMonitor>(normalized_id, parameters.data);
             } else {
                 throw std::runtime_error("source type not implemented");
             }
@@ -304,11 +304,11 @@ TileData::State Source::addTile(MapData& data,
             new_tile.data = std::make_shared<VectorTileData>(normalized_id,
                                                              std::move(monitor),
                                                              info.source_id,
-                                                             style,
+                                                             parameters.style,
                                                              callback);
         }
 
-        tile_data.emplace(new_tile.data->id, new_tile.data);
+        tileDataMap.emplace(new_tile.data->id, new_tile.data);
     }
 
     return new_tile.data->getState();
@@ -406,24 +406,20 @@ void Source::findLoadedParent(const TileID& id, int32_t minCoveringZoom, std::fo
     }
 }
 
-bool Source::update(MapData& data,
-                    const TransformState& transformState,
-                    Style& style,
-                    TexturePool& texturePool,
-                    bool shouldReparsePartialTiles) {
+bool Source::update(const StyleUpdateParameters& parameters) {
     bool allTilesUpdated = true;
 
-    if (!loaded || data.getAnimationTime() <= updated) {
+    if (!loaded || parameters.animationTime <= updated) {
         return allTilesUpdated;
     }
 
-    double zoom = getZoom(transformState);
+    double zoom = getZoom(parameters.transformState);
     if (info.type == SourceType::Raster || info.type == SourceType::Video) {
         zoom = ::round(zoom);
     } else {
         zoom = std::floor(zoom);
     }
-    std::forward_list<TileID> required = coveringTiles(transformState);
+    std::forward_list<TileID> required = coveringTiles(parameters.transformState);
 
     // Determine the overzooming/underzooming amounts.
     int32_t minCoveringZoom = util::clamp<int32_t>(zoom - 10, info.min_zoom, info.max_zoom);
@@ -440,14 +436,14 @@ bool Source::update(MapData& data,
 
         switch (state) {
         case TileData::State::partial:
-            if (shouldReparsePartialTiles) {
-                if (!handlePartialTile(id, style.workers)) {
+            if (parameters.shouldReparsePartialTiles) {
+                if (!handlePartialTile(id, parameters.worker)) {
                     allTilesUpdated = false;
                 }
             }
             break;
         case TileData::State::invalid:
-            state = addTile(data, transformState, style, texturePool, id);
+            state = addTile(id, parameters);
             break;
         default:
             break;
@@ -470,9 +466,9 @@ bool Source::update(MapData& data,
     }
 
     if (info.type != SourceType::Raster && cache.getSize() == 0) {
-        size_t conservativeCacheSize = ((float)transformState.getWidth()  / util::tileSize) *
-                                       ((float)transformState.getHeight() / util::tileSize) *
-                                       (transformState.getMaxZoom() - transformState.getMinZoom() + 1) *
+        size_t conservativeCacheSize = ((float)parameters.transformState.getWidth()  / util::tileSize) *
+                                       ((float)parameters.transformState.getHeight() / util::tileSize) *
+                                       (parameters.transformState.getMaxZoom() - parameters.transformState.getMinZoom() + 1) *
                                        0.5;
         cache.setSize(conservativeCacheSize);
     }
@@ -498,7 +494,7 @@ bool Source::update(MapData& data,
     });
 
     // Remove all the expired pointers from the set.
-    util::erase_if(tile_data, [&retain_data, &tileCache](std::pair<const TileID, std::weak_ptr<TileData>> &pair) {
+    util::erase_if(tileDataMap, [&retain_data, &tileCache](std::pair<const TileID, std::weak_ptr<TileData>> &pair) {
         const util::ptr<TileData> tile = pair.second.lock();
         if (!tile) {
             return true;
@@ -519,10 +515,10 @@ bool Source::update(MapData& data,
 
     for (auto& tilePtr : tilePtrs) {
         tilePtr->data->redoPlacement(
-            { transformState.getAngle(), transformState.getPitch(), data.getCollisionDebug() });
+            { parameters.transformState.getAngle(), parameters.transformState.getPitch(), parameters.debugOptions & MapDebugOptions::Collision });
     }
 
-    updated = data.getAnimationTime();
+    updated = parameters.animationTime;
 
     return allTilesUpdated;
 }
@@ -547,22 +543,22 @@ void Source::setObserver(Observer* observer) {
 }
 
 void Source::tileLoadingCompleteCallback(const TileID& normalized_id, const TransformState& transformState, bool collisionDebug) {
-    auto it = tile_data.find(normalized_id);
-    if (it == tile_data.end()) {
+    auto it = tileDataMap.find(normalized_id);
+    if (it == tileDataMap.end()) {
         return;
     }
 
-    util::ptr<TileData> data = it->second.lock();
-    if (!data) {
+    util::ptr<TileData> tileData = it->second.lock();
+    if (!tileData) {
         return;
     }
 
-    if (data->getState() == TileData::State::obsolete && !data->getError().empty()) {
-        emitTileLoadingFailed(data->getError());
+    if (tileData->getState() == TileData::State::obsolete && !tileData->getError().empty()) {
+        emitTileLoadingFailed(tileData->getError());
         return;
     }
 
-    data->redoPlacement({ transformState.getAngle(), transformState.getPitch(), collisionDebug });
+    tileData->redoPlacement({ transformState.getAngle(), transformState.getPitch(), collisionDebug });
     emitTileLoaded(true);
 }
 
@@ -605,4 +601,4 @@ void Source::dumpDebugLogs() const {
     }
 }
 
-}
+} // namespace mbgl

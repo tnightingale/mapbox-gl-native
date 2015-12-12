@@ -1,9 +1,10 @@
 #import "MGLAccountManager_Private.h"
 #import "MGLMapboxEvents.h"
+#import "MGLCategoryLoader.h"
 #import "NSProcessInfo+MGLAdditions.h"
 
-#import <Fabric/FABKitProtocol.h>
-#import <Fabric/Fabric+FABKits.h>
+#import "FABKitProtocol.h"
+#import "Fabric+FABKits.h"
 
 @interface MGLAccountManager() <FABKit>
 
@@ -17,6 +18,9 @@
 #pragma mark - Internal
 
 + (void)load {
+    // Load all referenced categories due to absence of -ObjC linker flag
+    [MGLCategoryLoader loadCategories];
+
     // Read the initial configuration from Info.plist. The shown-in-app setting
     // preempts the Settings bundle check in -[MGLMapboxEvents init] triggered
     // by setting the access token.
@@ -82,7 +86,7 @@
 }
 
 + (NSString *)kitDisplayVersion {
-    return @"3.0.0-pre.4";
+    return @"3.0.1";
 }
 
 + (void)initializeIfNeeded {

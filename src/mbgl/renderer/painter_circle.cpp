@@ -3,7 +3,6 @@
 
 #include <mbgl/layer/circle_layer.hpp>
 
-#include <mbgl/map/sprite.hpp>
 #include <mbgl/map/tile_id.hpp>
 #include <mbgl/map/map_data.hpp>
 
@@ -18,9 +17,13 @@ void Painter::renderCircle(CircleBucket& bucket,
     // Abort early.
     if (pass == RenderPass::Opaque) return;
 
-    config.stencilTest = false;
+    config.stencilTest = GL_FALSE;
+    config.depthFunc.reset();
+    config.depthTest = GL_TRUE;
+    config.depthMask = GL_FALSE;
+    setDepthSublayer(0);
 
-    const CirclePaintProperties& properties = layer.properties;
+    const CirclePaintProperties& properties = layer.paint;
     mat4 vtxMatrix = translatedMatrix(matrix, properties.translate, id, properties.translateAnchor);
 
     Color color = properties.color;
@@ -40,7 +43,7 @@ void Painter::renderCircle(CircleBucket& bucket,
     circleShader->u_matrix = vtxMatrix;
     circleShader->u_exmatrix = extrudeMatrix;
     circleShader->u_color = color;
-    circleShader->u_blur = std::max(properties.blur, antialiasing);
+    circleShader->u_blur = std::max<float>(properties.blur, antialiasing);
     circleShader->u_size = properties.radius;
 
     bucket.drawCircles(*circleShader);

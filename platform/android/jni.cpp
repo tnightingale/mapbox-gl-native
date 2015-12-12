@@ -19,7 +19,7 @@
 #include <mbgl/map/camera.hpp>
 #include <mbgl/annotation/point_annotation.hpp>
 #include <mbgl/annotation/shape_annotation.hpp>
-#include <mbgl/annotation/sprite_image.hpp>
+#include <mbgl/sprite/sprite_image.hpp>
 #include <mbgl/platform/event.hpp>
 #include <mbgl/platform/log.hpp>
 #include <mbgl/storage/network_status.hpp>
@@ -356,11 +356,11 @@ std::pair<mbgl::AnnotationSegment, mbgl::ShapeAnnotation::Properties> annotation
     int aS = (strokeColor >> 24) & 0xFF;
 
     mbgl::ShapeAnnotation::Properties shapeProperties;
-    mbgl::FillPaintProperties fillProperties;
+    mbgl::FillAnnotationProperties fillProperties;
     fillProperties.opacity = alpha;
-    fillProperties.stroke_color = {{ static_cast<float>(rS) / 255.0f, static_cast<float>(gS) / 255.0f, static_cast<float>(bS) / 255.0f, static_cast<float>(aS) / 255.0f }};
-    fillProperties.fill_color = {{ static_cast<float>(rF) / 255.0f, static_cast<float>(gF) / 255.0f, static_cast<float>(bF) / 255.0f, static_cast<float>(aF) / 255.0f }};
-    shapeProperties.set<mbgl::FillPaintProperties>(fillProperties);
+    fillProperties.outlineColor = {{ static_cast<float>(rS) / 255.0f, static_cast<float>(gS) / 255.0f, static_cast<float>(bS) / 255.0f, static_cast<float>(aS) / 255.0f }};
+    fillProperties.color = {{ static_cast<float>(rF) / 255.0f, static_cast<float>(gF) / 255.0f, static_cast<float>(bF) / 255.0f, static_cast<float>(aF) / 255.0f }};
+    shapeProperties.set<mbgl::FillAnnotationProperties>(fillProperties);
 
     jobject points = env->GetObjectField(polygon, polygonPointsId);
     mbgl::AnnotationSegment segment = annotation_segment_from_latlng_jlist(env, points);
@@ -375,6 +375,7 @@ std::pair<mbgl::AnnotationSegment, mbgl::ShapeAnnotation::Properties> annotation
 namespace {
 
 using namespace mbgl::android;
+using DebugOptions = mbgl::MapDebugOptions;
 
 jlong JNICALL nativeCreate(JNIEnv *env, jobject obj, jstring cachePath_, jstring dataPath_, jstring apkPath_, jfloat pixelRatio, jint availableProcessors, jlong totalMemory) {
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeCreate");
@@ -616,7 +617,8 @@ void JNICALL nativeMoveBy(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdou
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeMoveBy");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().moveBy(dx, dy, std::chrono::milliseconds(duration));
+    mbgl::PrecisionPoint center(dx, dy);
+    nativeMapView->getMap().moveBy(center, std::chrono::milliseconds(duration));
 }
 
 void JNICALL nativeSetLatLng(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jobject latLng,
@@ -662,12 +664,27 @@ void JNICALL nativeResetPosition(JNIEnv *env, jobject obj, jlong nativeMapViewPt
     nativeMapView->getMap().resetPosition();
 }
 
+jdouble JNICALL nativeGetPitch(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
+    mbgl::Log::Debug(mbgl::Event::JNI, "nativeGetPitch");
+    assert(nativeMapViewPtr != 0);
+    NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
+    return nativeMapView->getMap().getPitch();
+}
+
+void JNICALL nativeSetPitch(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdouble pitch, jlong duration) {
+    mbgl::Log::Debug(mbgl::Event::JNI, "nativeGetPitch");
+    assert(nativeMapViewPtr != 0);
+    NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
+    nativeMapView->getMap().setPitch(pitch, std::chrono::milliseconds(duration));    
+}
+
 void JNICALL nativeScaleBy(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdouble ds, jdouble cx,
                            jdouble cy, jlong duration) {
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeScaleBy");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().scaleBy(ds, cx, cy, std::chrono::milliseconds(duration));
+    mbgl::PrecisionPoint center(cx, cy);
+    nativeMapView->getMap().scaleBy(ds, center, std::chrono::milliseconds(duration));
 }
 
 void JNICALL nativeSetScale(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdouble scale,
@@ -675,7 +692,8 @@ void JNICALL nativeSetScale(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jd
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetScale");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().setScale(scale, cx, cy, std::chrono::milliseconds(duration));
+    mbgl::PrecisionPoint center(cx, cy);
+    nativeMapView->getMap().setScale(scale, center, std::chrono::milliseconds(duration));
 }
 
 jdouble JNICALL nativeGetScale(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
@@ -768,15 +786,18 @@ void JNICALL nativeRotateBy(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jd
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeRotateBy");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().rotateBy(sx, sy, ex, ey, std::chrono::milliseconds(duration));
+    mbgl::PrecisionPoint first(sx, sy);
+    mbgl::PrecisionPoint second(ex, ey);
+    nativeMapView->getMap().rotateBy(first, second, std::chrono::milliseconds(duration));
 }
 
 void JNICALL nativeSetBearing(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdouble degrees,
-                              jlong duration) {
+                              jlong milliseconds) {
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetBearing");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().setBearing(degrees, std::chrono::milliseconds(duration));
+    mbgl::Duration duration((std::chrono::milliseconds(milliseconds)));
+    nativeMapView->getMap().setBearing(degrees, duration);
 }
 
 void JNICALL nativeSetBearing(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jdouble degrees,
@@ -784,7 +805,8 @@ void JNICALL nativeSetBearing(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, 
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetBearing");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().setBearing(degrees, cx, cy);
+    mbgl::PrecisionPoint center(cx, cy);
+    nativeMapView->getMap().setBearing(degrees, center);
 }
 
 jdouble JNICALL nativeGetBearing(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
@@ -941,11 +963,11 @@ jlong JNICALL nativeAddPolyline(JNIEnv *env, jobject obj, jlong nativeMapViewPtr
     }
 
     mbgl::ShapeAnnotation::Properties shapeProperties;
-    mbgl::LinePaintProperties lineProperties;
+    mbgl::LineAnnotationProperties lineProperties;
     lineProperties.opacity = alpha;
     lineProperties.color = {{ static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f, static_cast<float>(a) / 255.0f }};
     lineProperties.width = width;
-    shapeProperties.set<mbgl::LinePaintProperties>(lineProperties);
+    shapeProperties.set<mbgl::LineAnnotationProperties>(lineProperties);
 
     jobject points = env->GetObjectField(polyline, polylinePointsId);
     mbgl::AnnotationSegment segment = annotation_segment_from_latlng_jlist(env, points);
@@ -1016,11 +1038,11 @@ jlongArray JNICALL nativeAddPolylines(JNIEnv *env, jobject obj, jlong nativeMapV
         }
 
         mbgl::ShapeAnnotation::Properties shapeProperties;
-        mbgl::LinePaintProperties lineProperties;
+        mbgl::LineAnnotationProperties lineProperties;
         lineProperties.opacity = alpha;
         lineProperties.color = {{ static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f, static_cast<float>(a) / 255.0f }};
         lineProperties.width = width;
-        shapeProperties.set<mbgl::LinePaintProperties>(lineProperties);
+        shapeProperties.set<mbgl::LineAnnotationProperties>(lineProperties);
 
         jobject points = env->GetObjectField(polyline, polylinePointsId);
         mbgl::AnnotationSegment segment = annotation_segment_from_latlng_jlist(env, points);
@@ -1179,9 +1201,7 @@ jlongArray JNICALL nativeGetAnnotationsInBounds(JNIEnv *env, jobject obj, jlong 
         return nullptr;
     }
 
-    mbgl::LatLngBounds bounds;
-    bounds.sw = { swLat, swLon };
-    bounds.ne = { neLat, neLon };
+    mbgl::LatLngBounds bounds({ swLat, swLon }, { neLat, neLon });
 
     // assume only points for now
     std::vector<uint32_t> annotations = nativeMapView->getMap().getPointAnnotationsInBounds(bounds);
@@ -1189,9 +1209,9 @@ jlongArray JNICALL nativeGetAnnotationsInBounds(JNIEnv *env, jobject obj, jlong 
     return std_vector_uint_to_jobject(env, annotations);
 }
 
-void JNICALL nativeSetSprite(JNIEnv *env, jobject obj, jlong nativeMapViewPtr,
+void JNICALL nativeAddAnnotationIcon(JNIEnv *env, jobject obj, jlong nativeMapViewPtr,
         jstring symbol, jint width, jint height, jfloat scale, jbyteArray jpixels) {
-    mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetSprite");
+    mbgl::Log::Debug(mbgl::Event::JNI, "nativeAddAnnotationIcon");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
 
@@ -1208,7 +1228,7 @@ void JNICALL nativeSetSprite(JNIEnv *env, jobject obj, jlong nativeMapViewPtr,
         float(scale),
         std::move(pixels));
 
-    nativeMapView->getMap().setSprite(symbolName, spriteImage);
+    nativeMapView->getMap().addAnnotationIcon(symbolName, spriteImage);
 }
 
 void JNICALL nativeSetVisibleCoordinateBounds(JNIEnv *env, jobject obj, jlong nativeMapViewPtr,
@@ -1288,7 +1308,10 @@ void JNICALL nativeSetDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jb
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetDebug");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().setDebug(debug);
+
+    DebugOptions debugOptions = debug ? DebugOptions::TileBorders | DebugOptions::ParseStatus | DebugOptions::Collision
+                                      : DebugOptions::NoDebug;
+    nativeMapView->getMap().setDebug(debugOptions);
     nativeMapView->enableFps(debug);
 }
 
@@ -1296,36 +1319,15 @@ void JNICALL nativeToggleDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr)
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeToggleDebug");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().toggleDebug();
-    nativeMapView->enableFps(nativeMapView->getMap().getDebug());
+    nativeMapView->getMap().cycleDebugOptions();
+    nativeMapView->enableFps(nativeMapView->getMap().getDebug() != DebugOptions::NoDebug);
 }
 
 jboolean JNICALL nativeGetDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeGetDebug");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    return nativeMapView->getMap().getDebug();
-}
-
-void JNICALL nativeSetCollisionDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr, jboolean debug) {
-    mbgl::Log::Debug(mbgl::Event::JNI, "nativeSetCollisionDebug");
-    assert(nativeMapViewPtr != 0);
-    NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().setCollisionDebug(debug);
-}
-
-void JNICALL nativeToggleCollisionDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
-    mbgl::Log::Debug(mbgl::Event::JNI, "nativeToggleCollisionDebug");
-    assert(nativeMapViewPtr != 0);
-    NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    nativeMapView->getMap().toggleCollisionDebug();
-}
-
-jboolean JNICALL nativeGetCollisionDebug(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
-    mbgl::Log::Debug(mbgl::Event::JNI, "nativeGetCollisionDebug");
-    assert(nativeMapViewPtr != 0);
-    NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    return nativeMapView->getMap().getCollisionDebug();
+    return nativeMapView->getMap().getDebug() != DebugOptions::NoDebug;
 }
 
 jboolean JNICALL nativeIsFullyLoaded(JNIEnv *env, jobject obj, jlong nativeMapViewPtr) {
@@ -1451,7 +1453,7 @@ jobject JNICALL nativeLatLngForPixel(JNIEnv *env, jobject obj, jlong nativeMapVi
         return nullptr;
     }
 
-    mbgl::LatLng latLng = nativeMapView->getMap().latLngForPixel(mbgl::vec2<double>(x, y));
+    mbgl::LatLng latLng = nativeMapView->getMap().latLngForPixel(mbgl::PrecisionPoint(x, y));
 
     jobject ret = env->NewObject(latLngClass, latLngConstructorId, latLng.latitude, latLng.longitude);
     if (ret == nullptr) {
@@ -1466,7 +1468,7 @@ jdouble JNICALL nativeGetTopOffsetPixelsForAnnotationSymbol(JNIEnv *env, jobject
     mbgl::Log::Debug(mbgl::Event::JNI, "nativeGetTopOffsetPixelsForAnnotationSymbol");
     assert(nativeMapViewPtr != 0);
     NativeMapView *nativeMapView = reinterpret_cast<NativeMapView *>(nativeMapViewPtr);
-    return nativeMapView->getMap().getTopOffsetPixelsForAnnotationSymbol(std_string_from_jstring(env, symbolName));
+    return nativeMapView->getMap().getTopOffsetPixelsForAnnotationIcon(std_string_from_jstring(env, symbolName));
 }
 
 
@@ -1900,6 +1902,8 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         {"nativeGetLatLng", "(J)Lcom/mapbox/mapboxsdk/geometry/LatLng;",
          reinterpret_cast<void *>(&nativeGetLatLng)},
         {"nativeResetPosition", "(J)V", reinterpret_cast<void *>(&nativeResetPosition)},
+        {"nativeGetPitch", "(J)D", reinterpret_cast<void *>(&nativeGetPitch)},
+        {"nativeSetPitch", "(JDJ)V", reinterpret_cast<void *>(&nativeSetPitch)},
         {"nativeScaleBy", "(JDDDJ)V", reinterpret_cast<void *>(&nativeScaleBy)},
         {"nativeSetScale", "(JDDDJ)V", reinterpret_cast<void *>(&nativeSetScale)},
         {"nativeGetScale", "(J)D", reinterpret_cast<void *>(&nativeGetScale)},
@@ -1939,16 +1943,13 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         {"nativeRemoveAnnotations", "(J[J)V", reinterpret_cast<void *>(&nativeRemoveAnnotations)},
         {"nativeGetAnnotationsInBounds", "(JLcom/mapbox/mapboxsdk/geometry/BoundingBox;)[J",
          reinterpret_cast<void *>(&nativeGetAnnotationsInBounds)},
-        {"nativeSetSprite", "(JLjava/lang/String;IIF[B)V", reinterpret_cast<void *>(&nativeSetSprite)},
+        {"nativeAddAnnotationIcon", "(JLjava/lang/String;IIF[B)V", reinterpret_cast<void *>(&nativeAddAnnotationIcon)},
         {"nativeSetVisibleCoordinateBounds", "(J[Lcom/mapbox/mapboxsdk/geometry/LatLng;Landroid/graphics/RectF;DJ)V",
                 reinterpret_cast<void *>(&nativeSetVisibleCoordinateBounds)},
         {"nativeOnLowMemory", "(J)V", reinterpret_cast<void *>(&nativeOnLowMemory)},
         {"nativeSetDebug", "(JZ)V", reinterpret_cast<void *>(&nativeSetDebug)},
         {"nativeToggleDebug", "(J)V", reinterpret_cast<void *>(&nativeToggleDebug)},
         {"nativeGetDebug", "(J)Z", reinterpret_cast<void *>(&nativeGetDebug)},
-        {"nativeSetCollisionDebug", "(JZ)V", reinterpret_cast<void *>(&nativeSetCollisionDebug)},
-        {"nativeToggleCollisionDebug", "(J)V", reinterpret_cast<void *>(&nativeToggleCollisionDebug)},
-        {"nativeGetCollisionDebug", "(J)Z", reinterpret_cast<void *>(&nativeGetCollisionDebug)},
         {"nativeIsFullyLoaded", "(J)Z", reinterpret_cast<void *>(&nativeIsFullyLoaded)},
         {"nativeSetReachability", "(JZ)V", reinterpret_cast<void *>(&nativeSetReachability)},
         {"nativeGetMetersPerPixelAtLatitude", "(JDD)D", reinterpret_cast<void *>(&nativeGetMetersPerPixelAtLatitude)},

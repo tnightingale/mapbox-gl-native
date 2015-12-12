@@ -5,6 +5,7 @@
 #include <mapbox/optional.hpp>
 
 #include <mbgl/style/value.hpp>
+#include <mbgl/util/chrono.hpp>
 #include <mbgl/util/ptr.hpp>
 #include <mbgl/util/vec.hpp>
 #include <mbgl/util/noncopyable.hpp>
@@ -46,12 +47,16 @@ public:
     virtual util::ptr<GeometryTileLayer> getLayer(const std::string&) const = 0;
 };
 
-class Request;
+class FileRequest;
 
 class GeometryTileMonitor : private util::noncopyable {
 public:
     virtual ~GeometryTileMonitor() = default;
 
+    using Callback = std::function<void (std::exception_ptr,
+                                         std::unique_ptr<GeometryTile>,
+                                         Seconds modified,
+                                         Seconds expires)>;
     /*
      * Monitor the tile held by this object for changes. When the tile is loaded for the first time,
      * or updates, the callback is executed. If an error occurs, the first parameter will be set.
@@ -60,7 +65,7 @@ public:
      *
      * To cease monitoring, release the returned Request.
      */
-    virtual Request* monitorTile(std::function<void (std::exception_ptr, std::unique_ptr<GeometryTile>)>) = 0;
+    virtual std::unique_ptr<FileRequest> monitorTile(const Callback&) = 0;
 };
 
 class GeometryTileFeatureExtractor {
@@ -74,6 +79,6 @@ private:
     const GeometryTileFeature& feature;
 };
 
-}
+} // namespace mbgl
 
 #endif

@@ -2,14 +2,12 @@
 #define MBGL_MAP_RASTER_TILE_DATA
 
 #include <mbgl/map/tile_data.hpp>
-#include <mbgl/style/style_properties.hpp>
 #include <mbgl/renderer/raster_bucket.hpp>
-#include <mbgl/storage/request_holder.hpp>
 
 namespace mbgl {
 
 class SourceInfo;
-class Request;
+class FileRequest;
 class StyleLayer;
 class TexturePool;
 class WorkRequest;
@@ -19,8 +17,10 @@ public:
     RasterTileData(const TileID&, TexturePool&, const SourceInfo&, Worker&);
     ~RasterTileData();
 
+    using Callback = std::function<void()>;
+
     void request(float pixelRatio,
-                 const std::function<void()>& callback);
+                 const Callback& callback);
 
     void cancel() override;
 
@@ -30,14 +30,13 @@ private:
     TexturePool& texturePool;
     const SourceInfo& source;
     Worker& worker;
-    RequestHolder req;
+    std::unique_ptr<FileRequest> req;
 
-    RasterLayoutProperties layout;
     std::unique_ptr<Bucket> bucket;
 
     std::unique_ptr<WorkRequest> workRequest;
 };
 
-}
+} // namespace mbgl
 
 #endif

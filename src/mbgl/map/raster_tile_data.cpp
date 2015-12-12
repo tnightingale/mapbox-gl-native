@@ -25,13 +25,13 @@ RasterTileData::~RasterTileData() {
 }
 
 void RasterTileData::request(float pixelRatio,
-                             const std::function<void()>& callback) {
+                             const RasterTileData::Callback& callback) {
     std::string url = source.tileURL(id, pixelRatio);
     state = State::loading;
 
     Resource resource = { Resource::Kind::Tile, url };
     FileSource* fs = util::ThreadContext::getFileSourceHandlingResource(resource);
-    req = fs->request(resource, util::RunLoop::getLoop(), [url, callback, this](const Response &res) {
+    req = fs->request(resource, [url, callback, this](Response res) {
         if (res.stale) {
             // Only handle fresh responses.
             return;
@@ -56,7 +56,10 @@ void RasterTileData::request(float pixelRatio,
             state = State::loaded;
         }
 
-        workRequest = worker.parseRasterTile(std::make_unique<RasterBucket>(texturePool, layout), res.data, [this, callback] (RasterTileParseResult result) {
+        modified = res.modified;
+        expires = res.expires;
+
+        workRequest = worker.parseRasterTile(std::make_unique<RasterBucket>(texturePool), res.data, [this, callback] (RasterTileParseResult result) {
             workRequest.reset();
             if (state != State::loaded) {
                 return;

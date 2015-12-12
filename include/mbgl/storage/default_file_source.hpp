@@ -8,7 +8,7 @@ namespace mbgl {
 
 namespace util {
 template <typename T> class Thread;
-}
+} // namespace util
 
 class DefaultFileSource : public FileSource {
 public:
@@ -19,16 +19,17 @@ public:
     std::string getAccessToken() const { return accessToken; }
 
     bool handlesResource(const Resource&) override { return true; }
-    Request* request(const Resource&, uv_loop_t*, Callback) override;
-    void cancel(Request*) override;
+    std::unique_ptr<FileRequest> request(const Resource&, Callback) override;
 
-public:
-    class Impl;
 private:
+    friend class DefaultFileRequest;
+    void cancel(const Resource&, FileRequest*);
+
+    class Impl;
     const std::unique_ptr<util::Thread<Impl>> thread;
     std::string accessToken;
 };
 
-}
+} // namespace mbgl
 
 #endif

@@ -22,9 +22,10 @@ default: ; @printf "You must specify a valid target\n"
 #### OS X targets ##############################################################
 
 ifeq ($(BUILD),osx)
-.PHONY: osx xosx run-osx run-xosx
+.PHONY: osx xosx nosx run-osx run-xosx
 osx: ; $(RUN) HOST=osx HOST_VERSION=x86_64 Makefile/osxapp
 xosx: ; $(RUN) HOST=osx HOST_VERSION=x86_64 Xcode/osxapp
+nosx: ; $(RUN) HOST=osx HOST_VERSION=x86_64 Ninja/osxapp
 run-osx: osx ; @"build/osx-x86_64/$(BUILDTYPE)/Mapbox GL.app/Contents/MacOS/Mapbox GL"
 run-xosx: xosx ; @"gyp/build/$(BUILDTYPE)/Mapbox GL.app/Contents/MacOS/Mapbox GL"
 
@@ -48,10 +49,12 @@ isim: ; $(RUN) HOST=ios Xcode/iosapp
 ibench: export XCODEBUILD_ARGS += -sdk iphoneos ARCHS="arm64"
 ibench: ; $(RUN) HOST=ios Xcode/ios-bench
 
-.PHONY: ipackage ipackage-strip ipackage-sim itest
+.PHONY: ipackage ipackage-strip ipackage-sim ipackage-no-bitcode itest
 ipackage: Xcode/ios ; @JOBS=$(JOBS) ./scripts/ios/package.sh
 ipackage-strip: Xcode/ios ; @JOBS=$(JOBS) ./scripts/ios/package.sh strip
 ipackage-sim: Xcode/ios ; @JOBS=$(JOBS) ./scripts/ios/package.sh sim
+ipackage-no-bitcode: Xcode/ios ; @JOBS=$(JOBS) ./scripts/ios/package.sh no-bitcode
+iframework: ipackage-strip ; ./scripts/ios/framework.sh
 itest: ipackage-sim ; ./scripts/ios/test.sh
 endif
 
@@ -59,9 +62,17 @@ endif
 
 .PHONY: linux run-linux run-valgrind-linux
 linux: ; $(RUN) Makefile/linuxapp
+nlinux: ; $(RUN) Ninja/linuxapp
 run-linux: linux ; (cd build/linux-x86_64/$(BUILDTYPE) && ./mapbox-gl)
 run-valgrind-linux: linux
 	(cd build/linux-x86_64/$(BUILDTYPE) && valgrind --leak-check=full --suppressions=../../../scripts/valgrind.sup ./mapbox-gl)
+
+
+.PHONY: config compdb tidy
+config: ; $(RUN) config
+# Generates a compilation database with ninja for use in clang tooling
+compdb: ; $(RUN) Ninja/compdb
+tidy: ; $(RUN) tidy
 
 .PHONY: android android-lib
 # Builds a particular android architecture.
@@ -86,10 +97,13 @@ node: ; $(RUN) HTTP=none ASSET=none CACHE=none Makefile/node
 
 
 .PHONY: Xcode/node
-Xcode/node: ; $(RUN) HTTP=none ASSET=none CACHE=none node/xproj
+Xcode/node: ; $(RUN) HTTP=none ASSET=none CACHE=none Xcode/node
 
 .PHONY: xnode
 xnode: Xcode/node ; @open ./build/binding.xcodeproj
+nproj:
+	$(RUN) HTTP=none ASSET=none CACHE=none node/xproj
+	@open ./build/binding.xcodeproj
 
 .PHONY: test
 test: ; $(RUN) Makefile/test

@@ -2,8 +2,6 @@
 #include <mbgl/layer/line_layer.hpp>
 #include <mbgl/geometry/elements_buffer.hpp>
 #include <mbgl/renderer/painter.hpp>
-#include <mbgl/style/style.hpp>
-#include <mbgl/style/style_properties.hpp>
 #include <mbgl/shader/line_shader.hpp>
 #include <mbgl/shader/linesdf_shader.hpp>
 #include <mbgl/shader/linepattern_shader.hpp>
@@ -42,7 +40,7 @@ void LineBucket::addGeometry(const std::vector<Coordinate>& vertices) {
         return;
     }
 
-    const float miterLimit = layout.join == JoinType::Bevel ? 1.05f : layout.miter_limit;
+    const float miterLimit = layout.join == JoinType::Bevel ? 1.05f : float(layout.miterLimit);
 
     const Coordinate firstVertex = vertices.front();
     const Coordinate lastVertex = vertices[len - 1];
@@ -54,7 +52,7 @@ void LineBucket::addGeometry(const std::vector<Coordinate>& vertices) {
     }
 
     const CapType beginCap = layout.cap;
-    const CapType endCap = closed ? CapType::Butt : layout.cap;
+    const CapType endCap = closed ? CapType::Butt : CapType(layout.cap);
 
     int8_t flip = 1;
     double distance = 0;
@@ -143,7 +141,7 @@ void LineBucket::addGeometry(const std::vector<Coordinate>& vertices) {
 
         if (middleVertex) {
             if (currentJoin == JoinType::Round) {
-                if (miterLength < layout.round_limit) {
+                if (miterLength < layout.roundLimit) {
                     currentJoin = JoinType::Miter;
                 } else if (miterLength <= 2) {
                     currentJoin = JoinType::FakeRound;
@@ -189,8 +187,9 @@ void LineBucket::addGeometry(const std::vector<Coordinate>& vertices) {
 
             addCurrentVertex(currentVertex, flip, distance, joinNormal, 0, 0, false, startVertex,
                              triangleStore);
-            flip = -flip;
 
+            addCurrentVertex(currentVertex, -flip, distance, joinNormal, 0, 0, false, startVertex,
+                             triangleStore);
         } else if (middleVertex && (currentJoin == JoinType::Bevel || currentJoin == JoinType::FakeRound)) {
             const bool lineTurnsLeft = flip * (prevNormal.x * nextNormal.y - prevNormal.y * nextNormal.x) > 0;
             const float offset = -std::sqrt(miterLength * miterLength - 1);
@@ -336,7 +335,7 @@ void LineBucket::addCurrentVertex(const Coordinate& currentVertex,
     vec2<double> extrude = normal * flip;
     if (endLeft)
         extrude = extrude - (util::perp(normal) * endLeft);
-    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, extrude.x, extrude.y, tx, 0, distance)
+    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, extrude.x, extrude.y, tx, 0, endLeft, distance)
          - startVertex;
     if (e1 >= 0 && e2 >= 0) {
         triangleStore.emplace_back(e1, e2, e3);
@@ -347,7 +346,7 @@ void LineBucket::addCurrentVertex(const Coordinate& currentVertex,
     extrude = normal * (-flip);
     if (endRight)
         extrude = extrude - (util::perp(normal) * endRight);
-    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, extrude.x, extrude.y, tx, 1, distance)
+    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, extrude.x, extrude.y, tx, 1, -endRight, distance)
          - startVertex;
     if (e1 >= 0 && e2 >= 0) {
         triangleStore.emplace_back(e1, e2, e3);
@@ -366,7 +365,7 @@ void LineBucket::addPieSliceVertex(const Coordinate& currentVertex,
     int8_t ty = lineTurnsLeft;
 
     auto flippedExtrude = extrude * (flip * (lineTurnsLeft ? -1 : 1));
-    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, flippedExtrude.x, flippedExtrude.y, 0, ty, distance)
+    e3 = vertexBuffer.add(currentVertex.x, currentVertex.y, flippedExtrude.x, flippedExtrude.y, 0, ty, 0, distance)
          - startVertex;
     if (e1 >= 0 && e2 >= 0) {
         triangleStore.emplace_back(e1, e2, e3);
@@ -391,7 +390,7 @@ void LineBucket::render(Painter& painter,
                         const StyleLayer& layer,
                         const TileID& id,
                         const mat4& matrix) {
-    painter.renderLine(*this, dynamic_cast<const LineLayer&>(layer), id, matrix);
+    painter.renderLine(*this, *layer.as<LineLayer>(), id, matrix);
 }
 
 bool LineBucket::hasData() const {

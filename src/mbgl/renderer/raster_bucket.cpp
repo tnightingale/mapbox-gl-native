@@ -5,9 +5,8 @@
 
 using namespace mbgl;
 
-RasterBucket::RasterBucket(TexturePool& texturePool, const RasterLayoutProperties& layout_)
-: layout(layout_),
-  raster(texturePool) {
+RasterBucket::RasterBucket(TexturePool& texturePool)
+: raster(texturePool) {
 }
 
 void RasterBucket::upload() {
@@ -21,10 +20,10 @@ void RasterBucket::render(Painter& painter,
                           const StyleLayer& layer,
                           const TileID& id,
                           const mat4& matrix) {
-    painter.renderRaster(*this, dynamic_cast<const RasterLayer&>(layer), id, matrix);
+    painter.renderRaster(*this, *layer.as<RasterLayer>(), id, matrix);
 }
 
-bool RasterBucket::setImage(std::unique_ptr<util::Image> image) {
+bool RasterBucket::setImage(PremultipliedImage image) {
     return raster.load(std::move(image));
 }
 

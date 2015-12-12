@@ -46,7 +46,7 @@ inline std::vector<std::string> split(const std::string& text, const std::string
     return tokens;
 }
 
-}
-}
+} // namespace util
+} // namespace mbgl
 
 #endif
