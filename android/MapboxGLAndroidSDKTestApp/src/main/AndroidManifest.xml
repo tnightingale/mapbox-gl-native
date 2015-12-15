@@ -29,6 +29,9 @@
             android:name=".InfoWindowAdapterActivity"
             android:label="@string/activity_infowindow_adapter" />
         <activity
+            android:name=".CustomMarkerActivity"
+            android:label="@string/action_custom_marker" />
+        <activity
             android:name=".InfoWindowActivity"
             android:label="@string/activity_info_window" />
         <activity
