@@ -79,6 +79,12 @@
                 android:title="@string/action_offline" />
 
             <item
+                android:id="@+id/action_on_map_load_bug"
+                android:checkable="false"
+                android:icon="@drawable/ic_airplanemode_active_black_24dp"
+                android:title="@string/action_on_map_load_bug" />
+
+            <item
                 android:id="@+id/action_mapboxmap"
                 android:checkable="false"
                 android:icon="@drawable/ic_mapboxmap"

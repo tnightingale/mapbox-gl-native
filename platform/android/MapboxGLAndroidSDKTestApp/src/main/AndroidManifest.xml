@@ -95,6 +95,9 @@
             android:name=".OfflineActivity"
             android:label="@string/activity_offline" />
         <activity
+            android:name=".OnMapLoadBugActivity"
+            android:label="@string/activity_on_map_load_bug" />
+        <activity
             android:name=".AnimatedMarkerActivity"
             android:label="@string/title_activity_animated_marker" />
 

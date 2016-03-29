@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="small_region" type="id"/>
+    <item name="large_region" type="id"/>
+</resources>

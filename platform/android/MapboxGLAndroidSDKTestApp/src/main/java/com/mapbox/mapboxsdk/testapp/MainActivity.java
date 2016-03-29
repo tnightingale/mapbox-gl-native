@@ -476,6 +476,10 @@ public class MainActivity extends AppCompatActivity {
                                 startActivity(new Intent(getApplicationContext(), OfflineActivity.class));
                                 return true;
 
+                            case R.id.action_on_map_load_bug:
+                                startActivity(new Intent(getApplicationContext(), OnMapLoadBugActivity.class));
+                                return true;
+
                             case R.id.action_animated_marker:
                                 startActivity(new Intent(getApplicationContext(), AnimatedMarkerActivity.class));
                                 return true;
